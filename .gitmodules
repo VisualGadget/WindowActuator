@@ -1,0 +1,3 @@
+[submodule "microdot"]
+	path = microdot
+	url = git@github.com:miguelgrinberg/microdot.git
