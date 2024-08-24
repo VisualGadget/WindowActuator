@@ -33,8 +33,6 @@ def sleep_s(interval: int):
 def retry_on_error(func):
     """
     Decorator to make a function robust by catching all exceptions and retry call attempt
-
-    :param func: _description_
     """
     def looped_call(*args, **kwargs):
         n = 1

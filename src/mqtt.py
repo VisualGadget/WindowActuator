@@ -1,5 +1,5 @@
+import asyncio
 import json
-import time
 import ubinascii
 import network
 import umqtt.simple
@@ -97,7 +97,7 @@ class MQTTWindowActuator:
         pos = str(self._position * 100)
         self._mqtt.publish(self._public_parameters[self.POSITION_PARAMETER]['position_topic'], pos)
 
-    def run(self):
+    async def run(self):
         """
         Main event loop
         """
@@ -108,7 +108,7 @@ class MQTTWindowActuator:
             self._servo.tick()
 
             idle = 0.1 if self._servo.running else 0.5
-            time.sleep(idle)
+            await asyncio.sleep(idle)
 
     def _inbox(self, topic: bytes, msg: bytes):
         """

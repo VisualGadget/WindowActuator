@@ -155,7 +155,7 @@ class Servo:
         """
         Process state changes
         """
-        print(f'{self._stalled=}, {self._target_pos=}, {self.running=}')
+        # print(f'{self._stalled=}, {self._target_pos=}, {self.running=}')
 
         if self._stalled:
             self._led.value(not self._led.value())

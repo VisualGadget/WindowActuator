@@ -1,3 +1,6 @@
-[submodule "microdot"]
-	path = microdot
-	url = git@github.com:miguelgrinberg/microdot.git
+[submodule "ext_modules/utemplate"]
+	path = ext_modules/utemplate
+	url = https://github.com/pfalcon/utemplate.git
+[submodule "ext_modules/microdot"]
+	path = ext_modules/microdot
+	url = https://github.com/miguelgrinberg/microdot.git
