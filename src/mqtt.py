@@ -23,7 +23,7 @@ class MQTTWindowActuator:
         :param servo: window servomotor
         """
         self._servo = servo
-        self._position = None
+        self._position: float = None
         self._stalled = False
 
         mac = ubinascii.hexlify(network.WLAN().config('mac')).decode()
@@ -117,14 +117,14 @@ class MQTTWindowActuator:
         :param topic: MQTT topic
         :param msg: message body
         """
-        topic = topic.decode()
+        top = topic.decode()
 
-        if topic == self._public_parameters[self.POSITION_PARAMETER]['command_topic']:
+        if top == self._public_parameters[self.POSITION_PARAMETER]['command_topic']:
             if msg == b'OPEN':
-                self.set_position(1)
+                self.position = 1
 
             elif msg == b'CLOSE':
-                self.set_position(0)
+                self.position = 0
 
             elif msg == b'STOP':
                 self._servo.stop()
@@ -132,9 +132,9 @@ class MQTTWindowActuator:
                 self._retrieve_current_position()
                 self.send_update()
 
-        if topic == self._public_parameters[self.POSITION_PARAMETER]['set_position_topic']:
+        if top == self._public_parameters[self.POSITION_PARAMETER]['set_position_topic']:
             new_position = float(msg) / 100
-            self.set_position(new_position)
+            self.position = new_position
 
     @property
     def position(self) -> float:
@@ -146,7 +146,7 @@ class MQTTWindowActuator:
         return self._position
 
     @position.setter
-    def set_position(self, position: float):
+    def position(self, position: float):
         """
         Change window opening
 

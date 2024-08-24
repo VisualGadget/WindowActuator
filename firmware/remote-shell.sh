@@ -9,11 +9,7 @@
 # reboot
 
 # udevadm info --name /dev/ttyUSB*
-rshell -p /dev/ttyUSB0
+rshell --port /dev/ttyUSB0
 
 # cd /pyboard/
 # ...
-
-
-# or REPL only
-# picocom /dev/ttyUSB0 -b115200

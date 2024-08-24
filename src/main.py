@@ -1,13 +1,16 @@
 import asyncio
 from machine import Pin, Signal, reset
 
-from microdot import Request
-from utemplate import Template
+from microdot import Request, Response
+from microdot.utemplate import Template
 
 import config as cfg
 from mqtt import MQTTWindowActuator
 from servo import Motor, PositionSensor, Servo
 from web import web_server, HTML_ROOT
+
+
+Template.initialize(template_dir=HTML_ROOT)
 
 
 def main():
@@ -33,17 +36,16 @@ def main():
     mqtt_wa = MQTTWindowActuator(cfg.MQTT_SERVER, cfg.MQTT_USER, cfg.MQTT_PASSWORD, servo)
 
     @web_server.route('/window.html')
-    async def window(request: Request):
-        return Template(HTML_ROOT + 'window.html').render(pos=round(mqtt_wa.position))
+    async def _window(request: Request):
+        return Template('window.html').render(pos=round(mqtt_wa.position * 100))
 
     @web_server.route('/settings.html')
-    async def settings(request: Request):
-        with open(HTML_ROOT + 'settings.html', encoding='utf8') as f:
-            return f.read()
+    async def _settings(request: Request):
+        return Response.send_file(HTML_ROOT + 'settings.html')
 
     @web_server.route('/set_position', methods=['POST'])
-    async def set_position(request: Request):
-        mqtt_wa.position = float(request.form['position'])
+    async def _set_position(request: Request):
+        mqtt_wa.position = float(request.form['position']) / 100
         return ''
 
     loop = asyncio.new_event_loop()
@@ -58,5 +60,6 @@ if __name__ == '__main__':
     try:
         main()
     except Exception as ex:
+        # print(ex)
         # raise ex
         reset()

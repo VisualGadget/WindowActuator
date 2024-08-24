@@ -17,5 +17,6 @@ git submodule update --init
 
 cd $upy/ports/esp8266/
 export "PATH=$espr:$PATH"
+# make clean
 make -j BOARD=ESP8266_GENERIC FROZEN_MANIFEST=$fw/manifest.py
 cp ./build-ESP8266_GENERIC/firmware.bin $fw/bin
