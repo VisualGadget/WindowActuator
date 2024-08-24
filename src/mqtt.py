@@ -121,10 +121,10 @@ class MQTTWindowActuator:
 
         if topic == self._public_parameters[self.POSITION_PARAMETER]['command_topic']:
             if msg == b'OPEN':
-                self._set_position(1)
+                self.set_position(1)
 
             elif msg == b'CLOSE':
-                self._set_position(0)
+                self.set_position(0)
 
             elif msg == b'STOP':
                 self._servo.stop()
@@ -134,14 +134,23 @@ class MQTTWindowActuator:
 
         if topic == self._public_parameters[self.POSITION_PARAMETER]['set_position_topic']:
             new_position = float(msg) / 100
-            self._set_position(new_position)
+            self.set_position(new_position)
 
-    def _set_position(self, position: float, send_update: bool = True):
+    @property
+    def position(self) -> float:
+        """
+        Current window opening
+        """
+        assert self._position is not None
+
+        return self._position
+
+    @position.setter
+    def set_position(self, position: float):
         """
         Change window opening
 
         :param position: new state
-        :param send_update: send position update
         """
         assert 0 <= position <= 1
         if position == self._position:
@@ -149,8 +158,7 @@ class MQTTWindowActuator:
 
         self._servo.position = self._position = position
 
-        if send_update:
-            self.send_update()
+        self.send_update()
 
     def _set_stalled(self, stalled: bool):
         """

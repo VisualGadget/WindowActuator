@@ -1,3 +1,5 @@
 .vscode
 venv*
 src/config.py
+src/boot.py
+src/wifi.py

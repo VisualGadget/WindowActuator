@@ -1,44 +1,13 @@
 import asyncio
 from machine import Pin, Signal, reset
 
-from microdot import Microdot, Response, Request
+from microdot import Request
+from utemplate import Template
 
 import config as cfg
 from mqtt import MQTTWindowActuator
 from servo import Motor, PositionSensor, Servo
-
-
-web_server = Microdot()
-Response.default_content_type = 'text/html'
-
-
-@web_server.route('/')
-async def index(request: Request):
-    with open('html/main.html', encoding='utf8') as f:
-        return f.read()
-
-
-@web_server.route('/style.css')
-async def index(request: Request):
-    with open('html/style.css', encoding='utf8') as f:
-        return f.read()
-
-
-@web_server.route('/window.html')
-async def index(request: Request):
-    with open('html/window.html', encoding='utf8') as f:
-        return f.read()
-
-@web_server.route('/settings.html')
-async def index(request: Request):
-    with open('html/settings.html', encoding='utf8') as f:
-        return f.read()
-
-
-@web_server.route('/set_position', methods=['POST'])
-async def set_position(request: Request):
-    print(f'{request.form["position"]=}')
-    return ''
+from web import web_server, HTML_ROOT
 
 
 def main():
@@ -63,13 +32,26 @@ def main():
 
     mqtt_wa = MQTTWindowActuator(cfg.MQTT_SERVER, cfg.MQTT_USER, cfg.MQTT_PASSWORD, servo)
 
+    @web_server.route('/window.html')
+    async def window(request: Request):
+        return Template(HTML_ROOT + 'window.html').render(pos=round(mqtt_wa.position))
+
+    @web_server.route('/settings.html')
+    async def settings(request: Request):
+        with open(HTML_ROOT + 'settings.html', encoding='utf8') as f:
+            return f.read()
+
+    @web_server.route('/set_position', methods=['POST'])
+    async def set_position(request: Request):
+        mqtt_wa.position = float(request.form['position'])
+        return ''
+
     loop = asyncio.new_event_loop()
 
     asyncio.create_task(mqtt_wa.run())
     asyncio.create_task(web_server.start_server(port=80, debug=True))
 
     loop.run_forever()
-    # asyncio.new_event_loop().run_forever()
 
 
 if __name__ == '__main__':
