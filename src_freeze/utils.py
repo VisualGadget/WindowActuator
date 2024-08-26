@@ -1,10 +1,11 @@
 import machine
-import utime
-
-import config
+import time
 
 
-if config.WDT_ENABLE:
+WDT_ENABLE = False  # Watchdog timer
+
+
+if WDT_ENABLE:
     print('using watchdog')
     wdt_class = machine.WDT
 else:
@@ -26,7 +27,7 @@ def sleep_s(interval: int):
     """
     watchdog.feed()
     for _ in range(interval):
-        utime.sleep(1)
+        time.sleep(1)
         watchdog.feed()
 
 

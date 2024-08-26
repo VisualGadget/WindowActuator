@@ -4,24 +4,25 @@ import ubinascii
 import network
 import umqtt.simple
 
-from servo import Servo
+from src_freeze.servo import Servo
 
 
 class MQTTWindowActuator:
-    """
-    Home Assistant MQTT window actuator device
-    """
+    # """
+    # Home Assistant MQTT window actuator device
+    # """
 
     POSITION_PARAMETER = 'position'
     STALE_PARAMETER = 'stale_detector'
 
-    def __init__(self, server: str, user: str, password: str, servo: Servo):
-        """
-        :param server: server address
-        :param user: user
-        :param password: password
-        :param servo: window servomotor
-        """
+    def __init__(self, server: str, port: int, user: str, password: str, servo: Servo):
+        # """
+        # :param server: server address
+        # :param port: server port
+        # :param user: user
+        # :param password: password
+        # :param servo: window servomotor
+        # """
         self._servo = servo
         self._position: float = None
         self._stalled = False
@@ -44,7 +45,13 @@ class MQTTWindowActuator:
                 'expire_after': 15 * 60  # 15 minutes
             }
         }
-        self._mqtt = umqtt.simple.MQTTClient(f'Window-{mac[-4:]}', server, user=user, password=password)
+        self._mqtt = umqtt.simple.MQTTClient(
+            client_id=f'Window-{mac[-4:]}',
+            server=server,
+            port=port,
+            user=user,
+            password=password
+        )
         self._mqtt.set_callback(self._inbox)
         self._connect()
 
@@ -79,18 +86,18 @@ class MQTTWindowActuator:
         self.send_update()
 
     def _retrieve_current_position(self):
-        """
-        Current position is servo position
-        """
+        # """
+        # Current position is servo position
+        # """
         self._position = self._servo.position
 
     def _connect(self):
         self._mqtt.connect()
 
     def send_update(self):
-        """
-        Send parameters update to MQTT server
-        """
+        # """
+        # Send parameters update to MQTT server
+        # """
         state = ('OFF', 'ON')[self._stalled]
         self._mqtt.publish(self._public_parameters[self.STALE_PARAMETER]['state_topic'], state)
 
@@ -98,9 +105,9 @@ class MQTTWindowActuator:
         self._mqtt.publish(self._public_parameters[self.POSITION_PARAMETER]['position_topic'], pos)
 
     async def run(self):
-        """
-        Main event loop
-        """
+        # """
+        # Main event loop
+        # """
         while True:
             self._mqtt.check_msg()
             self._set_stalled(self._servo.stalled)
@@ -111,12 +118,12 @@ class MQTTWindowActuator:
             await asyncio.sleep(idle)
 
     def _inbox(self, topic: bytes, msg: bytes):
-        """
-        MQTT incoming commands processing
+        # """
+        # MQTT incoming commands processing
 
-        :param topic: MQTT topic
-        :param msg: message body
-        """
+        # :param topic: MQTT topic
+        # :param msg: message body
+        # """
         top = topic.decode()
 
         if top == self._public_parameters[self.POSITION_PARAMETER]['command_topic']:
@@ -138,20 +145,20 @@ class MQTTWindowActuator:
 
     @property
     def position(self) -> float:
-        """
-        Current window opening
-        """
+        # """
+        # Current window opening
+        # """
         assert self._position is not None
 
         return self._position
 
     @position.setter
     def position(self, position: float):
-        """
-        Change window opening
+        # """
+        # Change window opening
 
-        :param position: new state
-        """
+        # :param position: new state
+        # """
         assert 0 <= position <= 1
         if position == self._position:
             return
@@ -161,11 +168,11 @@ class MQTTWindowActuator:
         self.send_update()
 
     def _set_stalled(self, stalled: bool):
-        """
-        Change stale status
+        # """
+        # Change stale status
 
-        :param stalled: new state
-        """
+        # :param stalled: new state
+        # """
         if stalled == self._stalled:
             return
 

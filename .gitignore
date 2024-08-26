@@ -1,5 +1,5 @@
 .vscode
+.mypy_cache
 venv*
-src/config.py
-src/boot.py
-src/wifi.py
+settings.json
+test.py

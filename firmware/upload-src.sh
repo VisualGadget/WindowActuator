@@ -1,5 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env -S rshell --port /dev/ttyUSB0 --file
 
-source ../venv/bin/activate
-
-rshell --port /dev/ttyUSB0 "rsync --mirror ../src /pyboard"  # never remove /pyboard from dest!
+rsync --mirror ../src_alive /pyboard  # never remove /pyboard from dest!
+repl~ import machine~ machine.soft_reset()
