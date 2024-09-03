@@ -4,13 +4,16 @@ from machine import Pin, Signal, reset
 import network
 import ubinascii
 
-from microdot import Request, Response
+from microdot import Request
 from microdot.utemplate import Template
 
-from src_freeze.mqtt import MQTTWindowActuator
-from src_freeze.servo import Motor, PositionSensor, Servo
-from src_freeze.web import web_server, HTML_ROOT
-from src_freeze.settings import config
+from wa.mqtt import MQTTWindowActuator
+from wa.servo import Motor, PositionSensor, Servo
+from wa.web import web_server, HTML_ROOT
+from wa.settings import config
+
+
+PASSWORD_MASK = '*' * 8
 
 
 mqtt_wa: MQTTWindowActuator = None
@@ -25,16 +28,46 @@ async def _window(request: Request):
         return 'Not connected to MQTT server'
 
 
-@web_server.route('/settings.html')
-async def _settings(request: Request):
-    return Response.send_file(HTML_ROOT + 'settings.html')
-
-
 @web_server.route('/set_position', methods=['POST'])
 async def _set_position(request: Request):
     if mqtt_wa:
         mqtt_wa.position = float(request.form['position']) / 100
     return ''
+
+
+@web_server.route('/network.html')
+async def _settings(request: Request):
+    return Template('network.html').render(
+        device_name=config.device_name,
+        wifi_ssid=config.wifi_ssid,
+        wifi_password=PASSWORD_MASK if config.wifi_password else '',
+        mqtt_server=config.mqtt_server,
+        mqtt_port=config.mqtt_port,
+        mqtt_user=config.mqtt_user,
+        mqtt_password=PASSWORD_MASK if config.mqtt_password else ''
+    )
+
+
+@web_server.route('/set_network', methods=['POST'])
+async def _set_network(request: Request):
+    config.device_name = request.form['device_name']
+    config.wifi_ssid = request.form['wifi_ssid']
+
+    wifi_pwd = request.form['wifi_password']
+    if wifi_pwd != PASSWORD_MASK:
+        config.wifi_password = wifi_pwd
+
+    config.mqtt_server = request.form['mqtt_server']
+    config.mqtt_port = request.form['mqtt_port']
+    config.mqtt_user = request.form['mqtt_user']
+
+    mqtt_pwd = request.form['mqtt_password']
+    if mqtt_pwd != PASSWORD_MASK:
+        config.mqtt_password = mqtt_pwd
+
+    config.save()
+
+    reset()
 
 
 def exception_handler(loop, context):
@@ -55,8 +88,8 @@ def main():
     # connect to Wi-Fi
     nic = network.WLAN(network.STA_IF)
     mac = ubinascii.hexlify(nic.config('mac')).decode()
-    network.hostname(f'wa-{mac[-4:]}')
-    nic.connect(config.wifi_ap, config.wifi_password)
+    network.hostname(config.device_name)
+    nic.connect(config.wifi_ssid, config.wifi_password)
     print('Connecting to WiFi', end='')
     while not nic.isconnected():
         time.sleep(1)
@@ -74,7 +107,8 @@ def main():
         cw_pin=Pin(13, Pin.OUT),
         ccw_pin=Pin(15, Pin.OUT),
         pwm_pin=Pin(4, Pin.OUT),
-        status_led=status_led
+        status_led=status_led,
+        power=config.motor_power / 100
     )
     pos = PositionSensor(
         pos_min=config.window_closed_pos,
@@ -92,7 +126,8 @@ def main():
         port=config.mqtt_port,
         user=config.mqtt_user,
         password=config.mqtt_password,
-        servo=servo
+        servo=servo,
+        client_name=config.device_name
     )
 
     asyncio.create_task(mqtt_wa.run())

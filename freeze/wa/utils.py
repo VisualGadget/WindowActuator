@@ -1,5 +1,7 @@
 import machine
+import network
 import time
+import ubinascii
 
 
 WDT_ENABLE = False  # Watchdog timer
@@ -20,11 +22,11 @@ watchdog = wdt_class()  # global use instance
 
 
 def sleep_s(interval: int):
-    """
-    Sleep and feed watchdog
+    # """
+    # Sleep and feed watchdog
 
-    :param interval: interval, s
-    """
+    # :param interval: interval, s
+    # """
     watchdog.feed()
     for _ in range(interval):
         time.sleep(1)
@@ -32,9 +34,9 @@ def sleep_s(interval: int):
 
 
 def retry_on_error(func):
-    """
-    Decorator to make a function robust by catching all exceptions and retry call attempt
-    """
+    # """
+    # Decorator to make a function robust by catching all exceptions and retry call attempt
+    # """
     def looped_call(*args, **kwargs):
         n = 1
         while True:
@@ -50,3 +52,10 @@ def retry_on_error(func):
                 n += 1
 
     return looped_call
+
+
+def wifi_mac() -> str:
+    # """
+    # WiFi MAC
+    # """
+    return ubinascii.hexlify(network.WLAN().config('mac')).decode()

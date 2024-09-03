@@ -1,10 +1,10 @@
 import asyncio
 import json
-import ubinascii
-import network
+import time
 import umqtt.simple
 
-from src_freeze.servo import Servo
+from wa.servo import Servo
+from wa.utils import wifi_mac
 
 
 class MQTTWindowActuator:
@@ -12,41 +12,43 @@ class MQTTWindowActuator:
     # Home Assistant MQTT window actuator device
     # """
 
-    POSITION_PARAMETER = 'position'
-    STALE_PARAMETER = 'stale_detector'
+    _WINDOW_DEV = 'window'
+    _STALE_DETECTOR_DEV = 'stale_detector'
+    _STATE_UPDATE_INTERVAL_S = 20 * 60  # 20 min
 
-    def __init__(self, server: str, port: int, user: str, password: str, servo: Servo):
+    def __init__(self, server: str, port: int, user: str, password: str, servo: Servo, client_name: str):
         # """
         # :param server: server address
         # :param port: server port
         # :param user: user
         # :param password: password
         # :param servo: window servomotor
+        # :param client_name: MQTT client name
         # """
         self._servo = servo
         self._position: float = None
         self._stalled = False
 
-        mac = ubinascii.hexlify(network.WLAN().config('mac')).decode()
+        mac = wifi_mac()
         device = {
             'model': 'WA1',
             'manufacturer': 'dIcEmAN',
             'name': 'Window',
             'identifiers': mac
         }
-        self._public_parameters = {
-            self.POSITION_PARAMETER: {
+        self._devices = {
+            self._WINDOW_DEV: {
                 'device_class': 'window',
                 'unit_of_measurement': '%',
-                'expire_after': 15 * 60  # 15 minutes
+                'expire_after': self._STATE_UPDATE_INTERVAL_S * 3
             },
-            self.STALE_PARAMETER: {
+            self._STALE_DETECTOR_DEV: {
                 'device_class': 'problem',
-                'expire_after': 15 * 60  # 15 minutes
+                'expire_after': self._STATE_UPDATE_INTERVAL_S * 3
             }
         }
         self._mqtt = umqtt.simple.MQTTClient(
-            client_id=f'Window-{mac[-4:]}',
+            client_id=client_name,
             server=server,
             port=port,
             user=user,
@@ -55,21 +57,21 @@ class MQTTWindowActuator:
         self._mqtt.set_callback(self._inbox)
         self._connect()
 
-        for param_name, sensor_info in self._public_parameters.items():
-            uid = f'wa_{mac[-4:]}_{param_name}'
+        for dev_name, sensor_info in self._devices.items():
+            uid = f'{client_name}_{dev_name}'
             topic_base = f'Household/window/{uid}'
 
-            sensor_info['name'] = param_name
+            sensor_info['name'] = dev_name
             sensor_info['unique_id'] = uid
             sensor_info['device'] = device
 
-            if param_name == self.POSITION_PARAMETER:
+            if dev_name == self._WINDOW_DEV:
                 platform = 'cover'
                 sensor_info['command_topic'] = topic_base + '/state/set'
                 sensor_info['set_position_topic'] = topic_base + '/position/set'
                 sensor_info['position_topic'] = topic_base + '/position/notify'
 
-            elif param_name == self.STALE_PARAMETER:
+            elif dev_name == self._STALE_DETECTOR_DEV:
                 platform = 'binary_sensor'
                 sensor_info['state_topic'] = topic_base + '/stale/notify'
 
@@ -99,20 +101,26 @@ class MQTTWindowActuator:
         # Send parameters update to MQTT server
         # """
         state = ('OFF', 'ON')[self._stalled]
-        self._mqtt.publish(self._public_parameters[self.STALE_PARAMETER]['state_topic'], state)
+        self._mqtt.publish(self._devices[self._STALE_DETECTOR_DEV]['state_topic'], state)
 
         pos = str(self._position * 100)
-        self._mqtt.publish(self._public_parameters[self.POSITION_PARAMETER]['position_topic'], pos)
+        self._mqtt.publish(self._devices[self._WINDOW_DEV]['position_topic'], pos)
+
+        self.last_update = time.time()
 
     async def run(self):
         # """
         # Main event loop
         # """
+
         while True:
             self._mqtt.check_msg()
             self._set_stalled(self._servo.stalled)
 
             self._servo.tick()
+
+            if time.time() - self.last_update > self._STATE_UPDATE_INTERVAL_S:
+                self.send_update()
 
             idle = 0.1 if self._servo.running else 0.5
             await asyncio.sleep(idle)
@@ -126,7 +134,7 @@ class MQTTWindowActuator:
         # """
         top = topic.decode()
 
-        if top == self._public_parameters[self.POSITION_PARAMETER]['command_topic']:
+        if top == self._devices[self._WINDOW_DEV]['command_topic']:
             if msg == b'OPEN':
                 self.position = 1
 
@@ -139,7 +147,7 @@ class MQTTWindowActuator:
                 self._retrieve_current_position()
                 self.send_update()
 
-        if top == self._public_parameters[self.POSITION_PARAMETER]['set_position_topic']:
+        if top == self._devices[self._WINDOW_DEV]['set_position_topic']:
             new_position = float(msg) / 100
             self.position = new_position
 

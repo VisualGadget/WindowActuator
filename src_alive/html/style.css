@@ -2,9 +2,15 @@ body {
     margin: 0px;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif
 }
+html, body {
+    height: 100%;
+}
 table, input {
     width: 100%;
 }
+/* table {
+    height: 100%;
+} */
 th, td {
     padding-left: 10px;
     padding-right: 10px;
@@ -12,11 +18,13 @@ th, td {
 iframe {
     box-sizing: border-box;
     width: 100%;
-    padding: 10px;
+    height: 100%;
+    /* padding: 10px; */
 }
 
 .navbar {
     box-shadow: 3px 3px 5px rgba(0, 0, 0, 0.3);
+    /* height: 100px; */
 }
 .navbar ul {
     list-style-type: none;

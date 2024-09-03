@@ -8,17 +8,21 @@ class Motor:
     """
     DC motor driver TB6612FNG
     """
-    def __init__(self, cw_pin: Pin, ccw_pin: Pin, pwm_pin: Pin, status_led: Pin, power: int = UINT16_MAX):
+    def __init__(self, cw_pin: Pin, ccw_pin: Pin, pwm_pin: Pin, status_led: Pin, power: float = 1):
         # """
         # :param cw_pin: pin to rotate motor CW
         # :param ccw_pin: pin to rotate motor CCW
         # :param pwm_pin: rotation power PWM pin
         # :param status_led: motor activity LED
-        # :param power: rotation speed/power, up to UINT16_MAX
+        # :param power: rotation speed/power, [0-1]
         # """
+        assert 0 <= power <= 1
+        duty = round(power * UINT16_MAX)
+        self._power = PWM(pwm_pin, freq=1000, duty_u16=duty)
+
         self._cw_pin = cw_pin
         self._ccw_pin = ccw_pin
-        self._power = PWM(pwm_pin, freq=1000, duty_u16=power)
+
         self._led = status_led
         self.running = False
         self.stop()

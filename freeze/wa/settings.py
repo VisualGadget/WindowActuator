@@ -1,5 +1,7 @@
 import json
 
+from wa.utils import wifi_mac
+
 
 class Parameter:
     # """
@@ -85,10 +87,11 @@ class PasswordParameter(Parameter):
 
 class SettingsStorage:
 
-    wifi_ap = Parameter('wifi_ap', str)
+    device_name = Parameter('device_name', str, f'wa_{wifi_mac()[-4:]}')
+
+    wifi_ssid = Parameter('wifi_ssid', str)
     wifi_password = PasswordParameter('wifi_password')
 
-    mqtt_device_name = Parameter('mqtt_device_name', str, 'window')
     mqtt_server = Parameter('mqtt_server', str)
     mqtt_port = Parameter('mqtt_port', int, 1883)
     mqtt_user = Parameter('mqtt_user', str)

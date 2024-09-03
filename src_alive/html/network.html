@@ -1,0 +1,51 @@
+{% args device_name, wifi_ssid, wifi_password, mqtt_server, mqtt_port, mqtt_user, mqtt_password %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h4>Network settings</h4>
+    <form action="set_network" method="post" target="fr_null">
+        <table>
+            <tr>
+                <td>Device name</td>
+                <td><input type="text" name="device_name" value="{{device_name}}"/></td>
+            </tr>
+            <tr>
+                <td><b>Wi-Fi</b></td>
+            </tr>
+            <tr>
+                <td style="width:5ch">SSID</td>
+                <td style="width:15ch"><input type="text" name="wifi_ssid" value="{{wifi_ssid}}"/></td>
+            </tr>
+            <tr>
+                <td>Password</td>
+                <td><input type="password" name="wifi_password" value="{{wifi_password}}"/></td>
+            </tr>
+            <tr>
+                <td><b>MQTT</b></td>
+            </tr>
+            <tr>
+                <td>Server</td>
+                <td><input type="text" name="mqtt_server" value="{{mqtt_server}}"/></td>
+            </tr>
+            <tr>
+                <td>Port</td>
+                <td><input type="number" name="mqtt_port" value="{{mqtt_port}}"/></td>
+            </tr>
+            <tr>
+                <td>User</td>
+                <td><input type="text" name="mqtt_user" value="{{mqtt_user}}"/></td>
+            </tr>
+            <tr>
+                <td>Password</td>
+                <td><input type="password" name="mqtt_password" value="{{mqtt_password}}"/></td>
+            </tr>
+        </table>
+        <input type="submit" onclick="this.form.submit()"/>
+    </form>
+    <iframe name="fr_null" style="display: none;"></iframe>
+</body>
+</html>
