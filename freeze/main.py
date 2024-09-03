@@ -66,7 +66,37 @@ async def _set_network(request: Request):
         config.mqtt_password = mqtt_pwd
 
     config.save()
+    reset()
 
+
+@web_server.route('/movement.html')
+async def _movement(request: Request):
+    return Template('movement.html').render(
+        motor_power=config.motor_power,
+        window_opened_pos=config.window_opened_pos,
+        window_closed_pos=config.window_closed_pos
+    )
+
+
+@web_server.route('/set_movement', methods=['POST'])
+async def _set_movement(request: Request):
+    config.motor_power = request.form['motor_power']
+
+    wnd_opened = request.form['window_opened_pos']
+    wnd_closed = request.form['window_closed_pos']
+
+    if wnd_opened > wnd_closed:
+        # if wnd_opened != config.window_opened_pos:
+        config.window_opened_pos = wnd_opened
+            # if mqtt_wa:
+            #     mqtt_wa.position = float(wnd_opened) / 100
+
+        # if wnd_closed != config.window_closed_pos:
+        config.window_closed_pos = wnd_closed
+            # if mqtt_wa:
+            #     mqtt_wa.position = float(wnd_closed) / 100
+
+    config.save()
     reset()
 
 
@@ -111,8 +141,8 @@ def main():
         power=config.motor_power / 100
     )
     pos = PositionSensor(
-        pos_min=config.window_closed_pos,
-        pos_max=config.window_opened_pos
+        pos_min=config.window_closed_pos / 100,
+        pos_max=config.window_opened_pos / 100
     )
     servo = Servo(
         motor=motor,

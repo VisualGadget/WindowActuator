@@ -98,8 +98,8 @@ class SettingsStorage:
     mqtt_password = PasswordParameter('mqtt_password')
 
     motor_power = PercentParameter('motor_power', 100)
-    window_opened_pos = Parameter('window_opened_pos', int, 52800)
-    window_closed_pos = Parameter('window_closed_pos', int, 15500)
+    window_opened_pos = PercentParameter('window_opened_pos', 81)
+    window_closed_pos = PercentParameter('window_closed_pos', 24)
 
     def __init__(self, path: str):
         # """

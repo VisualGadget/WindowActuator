@@ -60,19 +60,19 @@ class PositionSensor:
     # Gearbox axis absolute position sensor. Based on potentiometer.
     # """
 
-    def __init__(self, pos_min: int = 0, pos_max: int = UINT16_MAX):
+    def __init__(self, pos_min: float = 0., pos_max: float = 1.):
         # """
-        # :param pos_min: potentiometer ADC value of a low rotation position limit
-        # :param pos_max: potentiometer ADC value of a high rotation position limit
+        # :param pos_min: potentiometer relative ADC value of a low end position limit [0-1]
+        # :param pos_max: potentiometer relative ADC value of a high end position limit [0-1]
         # """
-        self._adc_min = pos_min
-        self._adc_max = pos_max
+        self._adc_min = round(pos_min * UINT16_MAX)
+        self._adc_max = round(pos_max * UINT16_MAX)
         self._adc = ADC(0)
 
     @property
     def position(self) -> float:
         # """
-        # Read position. Around [0 - 1].
+        # Read position. Around [0-1].
         # """
         pot = self._adc.read_u16()
         pos = (pot - self._adc_min) / (self._adc_max - self._adc_min)

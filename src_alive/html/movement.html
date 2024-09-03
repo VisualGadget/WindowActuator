@@ -1,0 +1,40 @@
+{% args motor_power, window_opened_pos, window_closed_pos %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h4>Movement settings</h4>
+    <form action="set_movement" method="post" target="fr_null">
+        <table>
+            <tr>
+                <td style="width:5ch">Servo motor power</td>
+                <td style="width:15ch"><input type="number" name="motor_power" min="10" max="100" step="10" value="{{motor_power}}"></td>
+            </tr>
+            <tr>
+                <td><b>Endpoints</b></td>
+            </tr>
+            <tr>
+                <td>Closed window position</td>
+                <td>
+                    <input type="range" name="window_closed_pos" min="0" max="100" step="1" value="{{window_closed_pos}}"
+                    onmouseup="this.form.submit()"
+                    ontouchend="this.form.submit()"/>
+                </td>
+            </tr>
+            <tr>
+                <td>Opened window position</td>
+                <td>
+                    <input type="range" name="window_opened_pos" min="0" max="100" step="1" value="{{window_opened_pos}}"
+                    onmouseup="this.form.submit()"
+                    ontouchend="this.form.submit()"/>
+                </td>
+            </tr>
+        </table>
+        <input type="submit" onclick="this.form.submit()"/>
+    </form>
+    <iframe name="fr_null" style="display: none;"></iframe>
+</body>
+</html>
