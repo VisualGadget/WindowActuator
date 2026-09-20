@@ -2,17 +2,17 @@
 Window driver to automate room ventilation with Home Assistant control. MQTT-over-WiFi device based on ESP8266 and MicroPython.
 
 ## Setup environment
-```
-sudo apt install -y python3-pip python3-venv picocom
+```bash
+sudo apt install -y picocom
 
 sudo usermod -a -G dialout $USER
 sudo reboot
 ```
 From project root:
-```
-python3 -m venv venv
+```bash
+uv venv venv
 source venv/bin/activate
-pip install micropython-esp8266-stubs esptool
+uv pip install -r pyproject.toml --group dev
 ```
 
 ## Build uPython firmware (optional)

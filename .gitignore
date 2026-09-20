@@ -1,5 +1,7 @@
 .vscode
 .mypy_cache
+.ruff_cache
 venv*
+.venv*
 settings.json
 test.py

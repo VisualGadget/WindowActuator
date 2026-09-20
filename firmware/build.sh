@@ -5,7 +5,7 @@
 # https://docs.espressif.com/projects/esp8266-rtos-sdk/en/latest/get-started/linux-setup.html
 
 fw=$PWD
-upy=~/git/micropython  # https://github.com/micropython/micropython repo cloned using Git
+upy=~/git/3rd_party/micropython  # https://github.com/micropython/micropython repo cloned using Git
 espr=~/esp/espressif/xtensa-lx106-elf/bin  # Espressif ESP8266 toolchain
 
 source ../venv/bin/activate
