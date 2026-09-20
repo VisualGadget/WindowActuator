@@ -4,7 +4,7 @@ import time
 
 import network
 from machine import Pin, Signal, reset
-from microdot import Request
+from microdot import Request, Response
 from microdot.utemplate import Template
 from utemplate import compiled
 from wa.mqtt import MQTTWindowActuator
@@ -36,10 +36,24 @@ def _collect_before_request(request: Request):
     gc.collect()
 
 
+def dynamic_template(template_name: str, **context):
+    """
+    Render a dynamic template without allowing browser caching.
+
+    :param template_name: Template filename.
+    :param context: Values provided to the template.
+    :return: Streaming HTTP response with no-cache headers.
+    """
+    return Response(
+        Template(template_name).generate(**context),
+        headers={'Cache-Control': 'no-store, max-age=0'}
+    )
+
+
 @web_server.route('/window.html')
 async def _window(request: Request):
     if mqtt_wa:
-        return Template('window.html').generate(pos=round(mqtt_wa.position * 100))
+        return dynamic_template('window.html', pos=round(mqtt_wa.position * 100))
     else:
         return 'Not connected to MQTT server'
 
@@ -53,7 +67,8 @@ async def _set_position(request: Request):
 
 @web_server.route('/network.html')
 async def _settings(request: Request):
-    return Template('network.html').generate(
+    return dynamic_template(
+        'network.html',
         device_name=config.device_name,
         wifi_ssid=config.wifi_ssid,
         wifi_password=PASSWORD_MASK if config.wifi_password else '',
@@ -87,7 +102,8 @@ async def _set_network(request: Request):
 
 @web_server.route('/movement.html')
 async def _movement(request: Request):
-    return Template('movement.html').generate(
+    return dynamic_template(
+        'movement.html',
         motor_power=config.motor_power,
         window_opened_pos=config.window_opened_pos,
         window_closed_pos=config.window_closed_pos
@@ -96,24 +112,29 @@ async def _movement(request: Request):
 
 @web_server.route('/set_movement', methods=['POST'])
 async def _set_movement(request: Request):
-    config.motor_power = request.form['motor_power']
+    try:
+        motor_power = int(request.form['motor_power'])
+        wnd_opened = int(request.form['window_opened_pos'])
+        wnd_closed = int(request.form['window_closed_pos'])
+    except ValueError:
+        return 'Movement settings must be whole percentages.', 400
 
-    wnd_opened = request.form['window_opened_pos']
-    wnd_closed = request.form['window_closed_pos']
+    if not 10 <= motor_power <= 100 or not 0 <= wnd_closed < wnd_opened <= 100:
+        return 'Position limits must satisfy 0 <= closed < opened <= 100.', 400
 
-    if wnd_opened > wnd_closed:
-        # if wnd_opened != config.window_opened_pos:
-        config.window_opened_pos = wnd_opened
-            # if mqtt_wa:
-            #     mqtt_wa.position = float(wnd_opened) / 100
-
-        # if wnd_closed != config.window_closed_pos:
-        config.window_closed_pos = wnd_closed
-            # if mqtt_wa:
-            #     mqtt_wa.position = float(wnd_closed) / 100
-
+    config.motor_power = motor_power
+    config.window_opened_pos = wnd_opened
+    config.window_closed_pos = wnd_closed
     config.save()
-    reset()
+
+    if mqtt_wa:
+        mqtt_wa.set_motor_power(power=motor_power / 100)
+        mqtt_wa.set_position_limits(
+            pos_min=wnd_closed / 100,
+            pos_max=wnd_opened / 100
+        )
+
+    return ''
 
 
 def exception_handler(loop, context):

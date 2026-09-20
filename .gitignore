@@ -1,6 +1,7 @@
 .vscode
 .mypy_cache
 .ruff_cache
+**/*/__pycache__/
 venv*
 .venv*
 settings.json

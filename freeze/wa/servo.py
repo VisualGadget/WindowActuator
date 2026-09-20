@@ -1,5 +1,4 @@
-from machine import Pin, ADC, PWM
-
+from machine import ADC, PWM, Pin
 
 UINT16_MAX = 65535
 
@@ -16,9 +15,8 @@ class Motor:
         # :param status_led: motor activity LED
         # :param power: rotation speed/power, [0-1]
         # """
-        assert 0 <= power <= 1
-        duty = round(power * UINT16_MAX)
-        self._power = PWM(pwm_pin, freq=1000, duty_u16=duty)
+        self._power = PWM(pwm_pin, freq=1000, duty_u16=0)
+        self.set_power(power=power)
 
         self._cw_pin = cw_pin
         self._ccw_pin = ccw_pin
@@ -26,6 +24,17 @@ class Motor:
         self._led = status_led
         self.running = False
         self.stop()
+
+    def set_power(self, power: float) -> None:
+        """
+        Set the motor PWM duty cycle.
+
+        :param power: Rotation power in the range from zero to one.
+        """
+        if not 0 <= power <= 1:
+            raise ValueError('Motor power must be in the range from zero to one')
+
+        self._power.duty_u16(round(power * UINT16_MAX))
 
     def cw(self):
         # """
@@ -65,9 +74,22 @@ class PositionSensor:
         # :param pos_min: potentiometer relative ADC value of a low end position limit [0-1]
         # :param pos_max: potentiometer relative ADC value of a high end position limit [0-1]
         # """
+        self._adc = ADC(0)
+        self.set_limits(pos_min=pos_min, pos_max=pos_max)
+
+    def set_limits(self, pos_min: float, pos_max: float) -> None:
+        """
+        Set potentiometer calibration limits.
+
+        :param pos_min: Potentiometer relative ADC value of the closed endpoint.
+        :param pos_max: Potentiometer relative ADC value of the opened endpoint.
+        :raises ValueError: If the limits are outside the ADC range or unordered.
+        """
+        if not 0 <= pos_min < pos_max <= 1:
+            raise ValueError('Position limits must satisfy 0 <= closed < opened <= 1')
+
         self._adc_min = round(pos_min * UINT16_MAX)
         self._adc_max = round(pos_max * UINT16_MAX)
-        self._adc = ADC(0)
 
     @property
     def position(self) -> float:
@@ -142,6 +164,29 @@ class Servo:
 
         if not _stalled:
             self._not_stalled()
+
+    def set_position_limits(self, pos_min: float, pos_max: float) -> float:
+        """
+        Apply new position sensor calibration limits while retaining the current percentage.
+
+        :param pos_min: Potentiometer relative ADC value of the closed endpoint.
+        :param pos_max: Potentiometer relative ADC value of the opened endpoint.
+        :return: Normalized position retained by the servo.
+        """
+        target_pos = self.position
+        self.stop()
+        self._pos.set_limits(pos_min=pos_min, pos_max=pos_max)
+        self.position = target_pos
+
+        return target_pos
+
+    def set_motor_power(self, power: float) -> None:
+        """
+        Apply a new motor power limit.
+
+        :param power: Rotation power in the range from zero to one.
+        """
+        self._motor.set_power(power=power)
 
     @property
     def running(self) -> bool:

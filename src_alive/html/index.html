@@ -135,24 +135,21 @@
                 var frame = document.getElementById('tab-' + tab);
                 if (!frame) return;
 
-                if (this.classList.contains('active')) {
-                    try { frame.contentWindow.location.reload(); } catch(err) {}
-                    return;
-                }
-
                 document.querySelectorAll('.nav-item').forEach(function(el) {
                     el.classList.remove('active');
                 });
                 this.classList.add('active');
 
-                if (!frame.getAttribute('src') && frame.getAttribute('data-src')) {
-                    frame.setAttribute('src', frame.getAttribute('data-src'));
-                }
-
                 document.querySelectorAll('.tab-frame').forEach(function(f) {
                     f.classList.remove('active');
                 });
                 frame.classList.add('active');
+
+                if (!frame.getAttribute('src') && frame.getAttribute('data-src')) {
+                    frame.setAttribute('src', frame.getAttribute('data-src'));
+                } else if (tab === 'window') {
+                    try { frame.contentWindow.location.reload(); } catch(err) {}
+                }
             });
         });
     </script>

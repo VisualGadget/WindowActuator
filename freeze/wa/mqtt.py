@@ -1,8 +1,8 @@
 import asyncio
 import json
 import time
-import umqtt.simple
 
+import umqtt.simple
 from wa.servo import Servo
 from wa.utils import wifi_mac
 
@@ -92,6 +92,24 @@ class MQTTWindowActuator:
         # Current position is servo position
         # """
         self._position = self._servo.position
+
+    def set_position_limits(self, pos_min: float, pos_max: float) -> None:
+        """
+        Apply new position sensor calibration limits and retain the current percentage.
+
+        :param pos_min: Potentiometer relative ADC value of the closed endpoint.
+        :param pos_max: Potentiometer relative ADC value of the opened endpoint.
+        """
+        self._position = self._servo.set_position_limits(pos_min=pos_min, pos_max=pos_max)
+        self.send_update()
+
+    def set_motor_power(self, power: float) -> None:
+        """
+        Apply a new motor power limit.
+
+        :param power: Rotation power in the range from zero to one.
+        """
+        self._servo.set_motor_power(power=power)
 
     def _connect(self):
         self._mqtt.connect()
