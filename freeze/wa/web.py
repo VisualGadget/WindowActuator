@@ -1,10 +1,11 @@
 from microdot import Microdot, Response
 
-
 HTML_ROOT = 'html/'
+STATIC_ASSET_MAX_AGE_S = 365 * 24 * 60 * 60
 
 web_server = Microdot()
 Response.default_content_type = 'text/html'
+Response.default_send_file_max_age = STATIC_ASSET_MAX_AGE_S
 
 
 def add_file_route(file: str, url=None):

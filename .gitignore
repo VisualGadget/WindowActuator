@@ -5,3 +5,4 @@ venv*
 .venv*
 settings.json
 test.py
+freeze/templates/*_html.py

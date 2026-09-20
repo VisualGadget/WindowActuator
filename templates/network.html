@@ -1,0 +1,58 @@
+{% args device_name, wifi_ssid, wifi_password, mqtt_server, mqtt_port, mqtt_user, mqtt_password %}
+{% set import gc; gc.collect() %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Network</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+<div class="card">
+<h2 class="card-title">Network settings</h2>
+<p class="card-desc">Wi-Fi connection &amp; MQTT broker setup</p>
+<form action="set_network" method="post" target="fr_null" onsubmit="onSave()">
+<div class="section-title">Device</div>
+<label>Device name
+<input type="text" name="device_name" value="{{device_name}}" required>
+</label>
+<div class="section-title">Wi-Fi connection</div>
+<label>Network SSID
+<input type="text" name="wifi_ssid" value="{{wifi_ssid}}" required>
+</label>
+<label>Password
+<input type="password" name="wifi_password" value="{{wifi_password}}">
+</label>
+<div class="section-title">MQTT broker</div>
+<div class="form-row">
+<label style="flex:2">Server IP / host
+<input type="text" name="mqtt_server" value="{{mqtt_server}}" required>
+</label>
+<label style="flex:1">Port
+<input type="number" name="mqtt_port" value="{{mqtt_port}}" min="1" max="65535" required>
+</label>
+</div>
+<label>Username
+<input type="text" name="mqtt_user" value="{{mqtt_user}}">
+</label>
+<label>Password
+<input type="password" name="mqtt_password" value="{{mqtt_password}}">
+</label>
+<button type="submit" class="btn-primary" id="sbtn">Save &amp; restart device</button>
+</form>
+<div id="toast" class="toast">Saving settings... Device restarting.</div>
+</div>
+</div>
+<iframe name="fr_null" style="display:none"></iframe>
+<script>
+function onSave() {
+    var b = document.getElementById('sbtn');
+    b.disabled = true;
+    b.textContent = 'Saving...';
+    document.getElementById('toast').style.display = 'block';
+}
+</script>
+</body>
+</html>

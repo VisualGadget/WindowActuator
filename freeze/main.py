@@ -1,29 +1,45 @@
 import asyncio
+import gc
 import time
-from machine import Pin, Signal, reset
-import network
-import ubinascii
 
+import network
+from machine import Pin, Signal, reset
 from microdot import Request
 from microdot.utemplate import Template
-
+from utemplate import compiled
 from wa.mqtt import MQTTWindowActuator
 from wa.servo import Motor, PositionSensor, Servo
-from wa.web import web_server, HTML_ROOT
 from wa.settings import config
-
+from wa.web import HTML_ROOT, web_server
 
 PASSWORD_MASK = '*' * 8
 
 
+class TemplateLoader(compiled.Loader):
+    """
+    Load templates frozen into firmware.
+    """
+
+    def __init__(self, package, template_dir):
+        super().__init__('templates', '.')
+
+
 mqtt_wa: MQTTWindowActuator = None
-Template.initialize(template_dir=HTML_ROOT)
+Template.initialize(template_dir=HTML_ROOT, loader_class=TemplateLoader)
+
+
+@web_server.before_request
+def _collect_before_request(request: Request):
+    # """
+    # Reclaim memory leaked by previous request handling
+    # """
+    gc.collect()
 
 
 @web_server.route('/window.html')
 async def _window(request: Request):
     if mqtt_wa:
-        return Template('window.html').render(pos=round(mqtt_wa.position * 100))
+        return Template('window.html').generate(pos=round(mqtt_wa.position * 100))
     else:
         return 'Not connected to MQTT server'
 
@@ -37,7 +53,7 @@ async def _set_position(request: Request):
 
 @web_server.route('/network.html')
 async def _settings(request: Request):
-    return Template('network.html').render(
+    return Template('network.html').generate(
         device_name=config.device_name,
         wifi_ssid=config.wifi_ssid,
         wifi_password=PASSWORD_MASK if config.wifi_password else '',
@@ -71,7 +87,7 @@ async def _set_network(request: Request):
 
 @web_server.route('/movement.html')
 async def _movement(request: Request):
-    return Template('movement.html').render(
+    return Template('movement.html').generate(
         motor_power=config.motor_power,
         window_opened_pos=config.window_opened_pos,
         window_closed_pos=config.window_closed_pos
@@ -104,7 +120,12 @@ def exception_handler(loop, context):
     # """
     # asyncio exception handler
     # """
-    print(f'Reset due to error: {context['exception']}')
+    exc = context['exception']
+    if isinstance(exc, OSError):
+        print(f'Ignored connection error: {exc}')
+        return
+
+    print(f'Reset due to error: {exc}')
     reset()
 
 
@@ -117,7 +138,6 @@ def main():
 
     # connect to Wi-Fi
     nic = network.WLAN(network.STA_IF)
-    mac = ubinascii.hexlify(nic.config('mac')).decode()
     network.hostname(config.device_name)
     nic.connect(config.wifi_ssid, config.wifi_password)
     print('Connecting to WiFi', end='')
@@ -126,10 +146,13 @@ def main():
         print('.', end='')
         status_led.value(not status_led.value())
 
-    if_cfg = dict(zip(
-        ('IP', 'subnet', 'gateway', 'DNS'),
-        nic.ifconfig()
-    ))
+    ip, subnet, gateway, dns = nic.ifconfig()
+    if_cfg = {
+        'IP': ip,
+        'subnet': subnet,
+        'gateway': gateway,
+        'DNS': dns
+    }
     print(f'\nNetwork config: {if_cfg}')
     status_led.off()
 

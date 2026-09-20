@@ -1,0 +1,64 @@
+{% args pos %}
+{% set import gc; gc.collect() %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Window control</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+<div class="card">
+<h2 class="card-title">Window opening</h2>
+<p class="card-desc">Current window opening and manual positioning</p>
+<div class="pos-hero">
+<div class="pos-display">
+<span class="pos-number" id="pos_val">{{pos}}</span>
+<span class="pos-percent">%</span>
+</div>
+</div>
+<form action="set_position" method="post" target="fr_null" id="pform">
+<label>Adjust position
+<div class="slider-box">
+<input type="range" id="prange" name="position"
+min="0" max="100" step="1" value="{{pos}}"
+oninput="document.getElementById('pos_val').textContent=this.value"
+onchange="sendPos(this.value)">
+</div>
+</label>
+<div class="presets-grid">
+<button type="button" class="btn-preset" onclick="setPreset(0)">Close</button>
+<button type="button" class="btn-preset" onclick="setPreset(25)">25%</button>
+<button type="button" class="btn-preset" onclick="setPreset(50)">50%</button>
+<button type="button" class="btn-preset" onclick="setPreset(100)">Open</button>
+</div>
+</form>
+<div id="toast" class="toast">Setting position...</div>
+</div>
+</div>
+<iframe name="fr_null" style="display:none"></iframe>
+<script>
+function sendPos(v) {
+    var t = document.getElementById('toast');
+    t.textContent = 'Setting position to ' + v + '%...';
+    t.style.display = 'block';
+    fetch('set_position', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'position=' + encodeURIComponent(v)
+    }).then(function() {
+        setTimeout(function() { t.style.display = 'none'; }, 1000);
+    }).catch(function() {
+        document.getElementById('pform').submit();
+    });
+}
+function setPreset(v) {
+    document.getElementById('prange').value = v;
+    document.getElementById('pos_val').textContent = v;
+    sendPos(v);
+}
+</script>
+</body>
+</html>

@@ -8,7 +8,7 @@ fw=$PWD
 upy=~/git/3rd_party/micropython  # https://github.com/micropython/micropython repo cloned using Git
 espr=~/esp/espressif/xtensa-lx106-elf/bin  # Espressif ESP8266 toolchain
 
-source ../venv/bin/activate
+python "$fw/compile_templates.py"
 
 cd $upy
 git checkout master

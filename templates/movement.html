@@ -1,0 +1,57 @@
+{% args motor_power, window_opened_pos, window_closed_pos %}
+{% set import gc; gc.collect() %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Movement</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+<div class="card">
+<h2 class="card-title">Movement &amp; calibration</h2>
+<p class="card-desc">Motor power limits and window stroke endpoints</p>
+<form action="set_movement" method="post" target="fr_null" onsubmit="onSave()">
+<div class="section-title">Motor settings</div>
+<label>Servo motor power
+<div class="slider-box">
+<input type="range" name="motor_power" min="10" max="100" step="10" value="{{motor_power}}"
+oninput="document.getElementById('pb').textContent=this.value+'%'">
+<span class="val-badge" id="pb">{{motor_power}}%</span>
+</div>
+</label>
+<div class="info-note">Motor duty limit: 10% to 100% in 10% steps.</div>
+<div class="section-title">Window endpoints</div>
+<label>Closed window position
+<div class="slider-box">
+<input type="range" name="window_closed_pos" min="0" max="100" step="1" value="{{window_closed_pos}}"
+oninput="document.getElementById('cb').textContent=this.value+'%'">
+<span class="val-badge" id="cb">{{window_closed_pos}}%</span>
+</div>
+</label>
+<label>Opened window position
+<div class="slider-box">
+<input type="range" name="window_opened_pos" min="0" max="100" step="1" value="{{window_opened_pos}}"
+oninput="document.getElementById('ob').textContent=this.value+'%'">
+<span class="val-badge" id="ob">{{window_opened_pos}}%</span>
+</div>
+</label>
+<div class="info-note">Opened position must be greater than closed position.</div>
+<button type="submit" class="btn-primary" id="sbtn">Save movement settings</button>
+</form>
+<div id="toast" class="toast">Saving settings... Device restarting.</div>
+</div>
+</div>
+<iframe name="fr_null" style="display:none"></iframe>
+<script>
+function onSave() {
+    var b = document.getElementById('sbtn');
+    b.disabled = true;
+    b.textContent = 'Saving...';
+    document.getElementById('toast').style.display = 'block';
+}
+</script>
+</body>
+</html>
