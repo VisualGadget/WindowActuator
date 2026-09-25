@@ -1,180 +1,51 @@
 import asyncio
-import gc
 import time
 
 import network
-from machine import Pin, Signal, reset
-from microdot import Request, Response
-from microdot.utemplate import Template
-from utemplate import compiled
+import wa.web_app  # noqa: F401  (registers routes on wa.web.web_server)
+from machine import WDT, Pin, Signal, reset
+from wa import net, state
 from wa.mqtt import MQTTWindowActuator
 from wa.servo import Motor, PositionSensor, Servo
 from wa.settings import config
-from wa.web import HTML_ROOT, web_server
-
-PASSWORD_MASK = '*' * 8
+from wa.web import web_server
 
 
-class TemplateLoader(compiled.Loader):
-    """
-    Load templates frozen into firmware.
-    """
-
-    def __init__(self, package, template_dir):
-        super().__init__('templates', '.')
+async def _start_web_server() -> None:
+    # Bind the HTTP server. This coroutine never returns while serving.
+    await web_server.start_server(host='0.0.0.0', port=80, debug=False)
 
 
-mqtt_wa: MQTTWindowActuator = None
-Template.initialize(template_dir=HTML_ROOT, loader_class=TemplateLoader)
-
-
-@web_server.before_request
-def _collect_before_request(request: Request):
-    # """
-    # Reclaim memory leaked by previous request handling
-    # """
-    gc.collect()
-
-
-def dynamic_template(template_name: str, **context):
-    """
-    Render a dynamic template without allowing browser caching.
-
-    :param template_name: Template filename.
-    :param context: Values provided to the template.
-    :return: Streaming HTTP response with no-cache headers.
-    """
-    return Response(
-        Template(template_name).generate(**context),
-        headers={'Cache-Control': 'no-store, max-age=0'}
-    )
-
-
-@web_server.route('/window.html')
-async def _window(request: Request):
-    if mqtt_wa:
-        return dynamic_template('window.html', pos=round(mqtt_wa.position * 100))
-    else:
-        return 'Not connected to MQTT server'
-
-
-@web_server.route('/set_position', methods=['POST'])
-async def _set_position(request: Request):
-    if mqtt_wa:
-        mqtt_wa.position = float(request.form['position']) / 100
-    return ''
-
-
-@web_server.route('/network.html')
-async def _settings(request: Request):
-    return dynamic_template(
-        'network.html',
-        device_name=config.device_name,
-        wifi_ssid=config.wifi_ssid,
-        wifi_password=PASSWORD_MASK if config.wifi_password else '',
-        mqtt_server=config.mqtt_server,
-        mqtt_port=config.mqtt_port,
-        mqtt_user=config.mqtt_user,
-        mqtt_password=PASSWORD_MASK if config.mqtt_password else ''
-    )
-
-
-@web_server.route('/set_network', methods=['POST'])
-async def _set_network(request: Request):
-    config.device_name = request.form['device_name']
-    config.wifi_ssid = request.form['wifi_ssid']
-
-    wifi_pwd = request.form['wifi_password']
-    if wifi_pwd != PASSWORD_MASK:
-        config.wifi_password = wifi_pwd
-
-    config.mqtt_server = request.form['mqtt_server']
-    config.mqtt_port = request.form['mqtt_port']
-    config.mqtt_user = request.form['mqtt_user']
-
-    mqtt_pwd = request.form['mqtt_password']
-    if mqtt_pwd != PASSWORD_MASK:
-        config.mqtt_password = mqtt_pwd
-
-    config.save()
-    reset()
-
-
-@web_server.route('/movement.html')
-async def _movement(request: Request):
-    return dynamic_template(
-        'movement.html',
-        motor_power=config.motor_power,
-        window_opened_pos=config.window_opened_pos,
-        window_closed_pos=config.window_closed_pos
-    )
-
-
-@web_server.route('/set_movement', methods=['POST'])
-async def _set_movement(request: Request):
-    try:
-        motor_power = int(request.form['motor_power'])
-        wnd_opened = int(request.form['window_opened_pos'])
-        wnd_closed = int(request.form['window_closed_pos'])
-    except ValueError:
-        return 'Movement settings must be whole percentages.', 400
-
-    if not 10 <= motor_power <= 100 or not 0 <= wnd_closed < wnd_opened <= 100:
-        return 'Position limits must satisfy 0 <= closed < opened <= 100.', 400
-
-    config.motor_power = motor_power
-    config.window_opened_pos = wnd_opened
-    config.window_closed_pos = wnd_closed
-    config.save()
-
-    if mqtt_wa:
-        mqtt_wa.set_motor_power(power=motor_power / 100)
-        mqtt_wa.set_position_limits(
-            pos_min=wnd_closed / 100,
-            pos_max=wnd_opened / 100
-        )
-
-    return ''
+def safe_shutdown() -> None:
+    # Stop the motor before a reset or fatal error.
+    if state.mqtt_wa:
+        state.mqtt_wa.safe_shutdown()
+    elif state.servo:
+        state.servo.stop(fault='system_shutdown')
 
 
 def exception_handler(loop, context):
-    # """
-    # asyncio exception handler
-    # """
-    exc = context['exception']
+    # Stop hardware before recovering from an asynchronous task failure.
+    exc = context.get('exception')
     if isinstance(exc, OSError):
         print(f'Ignored connection error: {exc}')
         return
 
     print(f'Reset due to error: {exc}')
+    safe_shutdown()
     reset()
 
 
 def main():
     status_led = Signal(2, Pin.OPEN_DRAIN, invert=True)
+    ap_if = network.WLAN(network.AP_IF)
+    ap_if.active(False)
 
-    # disable access point
-    # ap_if = network.WLAN(network.AP_IF)
-    # ap_if.active(False)
-
-    # connect to Wi-Fi
     nic = network.WLAN(network.STA_IF)
-    network.hostname(config.device_name)
-    nic.connect(config.wifi_ssid, config.wifi_password)
-    print('Connecting to WiFi', end='')
-    while not nic.isconnected():
-        time.sleep(1)
-        print('.', end='')
-        status_led.value(not status_led.value())
+    active_interface = net.connect_wifi(nic, status_led)
 
-    ip, subnet, gateway, dns = nic.ifconfig()
-    if_cfg = {
-        'IP': ip,
-        'subnet': subnet,
-        'gateway': gateway,
-        'DNS': dns
-    }
-    print(f'\nNetwork config: {if_cfg}')
+    ip, subnet, gateway, dns = active_interface.ifconfig()
+    print(f'\nNetwork config: {{"IP": "{ip}", "subnet": "{subnet}", "gateway": "{gateway}", "DNS": "{dns}"}}')
     status_led.off()
 
     motor = Motor(
@@ -188,35 +59,34 @@ def main():
         pos_min=config.window_closed_pos / 100,
         pos_max=config.window_opened_pos / 100
     )
-    servo = Servo(
-        motor=motor,
-        pos_sensor=pos,
-        status_led=status_led
-    )
+    state.servo = Servo(motor=motor, pos_sensor=pos, status_led=status_led)
 
-    global mqtt_wa
-    mqtt_wa = MQTTWindowActuator(
+    state.mqtt_wa = MQTTWindowActuator(
         server=config.mqtt_server,
         port=config.mqtt_port,
         user=config.mqtt_user,
         password=config.mqtt_password,
-        servo=servo,
+        servo=state.servo,
         client_name=config.device_name
     )
 
-    asyncio.create_task(mqtt_wa.run())
-    asyncio.create_task(web_server.start_server(port=80, debug=True))
+    watchdog = WDT(timeout=5000)
+    state.mqtt_wa.set_watchdog(watchdog)
+
+    asyncio.create_task(_start_web_server())
+    asyncio.create_task(state.mqtt_wa.run())
+    asyncio.create_task(state.mqtt_wa.network_run())
+    asyncio.create_task(net.wifi_monitor())
 
 
 if __name__ == '__main__':
+    state.boot_ticks_ms = time.ticks_ms()  # type: ignore[attr-defined]
     try:
         loop = asyncio.get_event_loop()
         loop.set_exception_handler(exception_handler)
-
         main()
-
         loop.run_forever()
-
     except Exception as ex:
         print(f'Reset due to error: {ex}')
+        safe_shutdown()
         reset()

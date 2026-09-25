@@ -1,19 +1,18 @@
 {% args device_name, wifi_ssid, wifi_password, mqtt_server, mqtt_port, mqtt_user, mqtt_password %}
-{% set import gc; gc.collect() %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Network</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
 <div class="container">
 <div class="card">
 <h2 class="card-title">Network settings</h2>
 <p class="card-desc">Wi-Fi connection &amp; MQTT broker setup</p>
-<form action="set_network" method="post" target="fr_null" onsubmit="onSave()">
+<form action="set_network" method="post" id="network-form" onsubmit="return onSave(event)">
 <div class="section-title">Device</div>
 <label>Device name
 <input type="text" name="device_name" value="{{device_name}}" required>
@@ -47,11 +46,21 @@
 </div>
 <iframe name="fr_null" style="display:none"></iframe>
 <script>
-function onSave() {
+function onSave(event) {
+    event.preventDefault();
     var b = document.getElementById('sbtn');
+    var form = document.getElementById('network-form');
     b.disabled = true;
     b.textContent = 'Saving...';
     document.getElementById('toast').style.display = 'block';
+    fetch(form.action, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: new URLSearchParams(new FormData(form)).toString()
+    });
+    return false;
 }
 </script>
 </body>

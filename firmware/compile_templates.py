@@ -26,7 +26,10 @@ def main() -> None:
     """
     Compile all web templates for inclusion in the firmware.
     """
-    FROZEN_TEMPLATE_ROOT.mkdir(exist_ok=True)
+    FROZEN_TEMPLATE_ROOT.mkdir(parents=True, exist_ok=True)
+    for generated_path in FROZEN_TEMPLATE_ROOT.glob('*_html.py'):
+        generated_path.unlink()
+
     for source_path in sorted(TEMPLATE_ROOT.glob('*.html')):
         compile_template(source_path=source_path)
 

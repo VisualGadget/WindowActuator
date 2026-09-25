@@ -1,12 +1,11 @@
-{% args motor_power, window_opened_pos, window_closed_pos %}
-{% set import gc; gc.collect() %}
+{% args motor_power, window_opened_pos, window_closed_pos, raw_position %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Movement</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
 <div class="container">
@@ -39,6 +38,9 @@ oninput="updateBadge('ob', this.value)" onchange="applySettings()">
 </div>
 </label>
 <div class="info-note">Opened position must be greater than closed position.</div>
+<div class="section-title">Calibration helper</div>
+<div class="info-note">Current potentiometer reading: <b>{{raw_position}}%</b> of full scale. Drive the window to
+an endpoint and set the matching slider above to this value.</div>
 </form>
 <div id="toast" class="toast">Applying settings...</div>
 </div>
@@ -54,7 +56,9 @@ function applySettings() {
     toast.style.display = 'block';
     fetch(form.action, {
         method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        },
         body: new URLSearchParams(new FormData(form)).toString()
     }).then(function(response) {
         if (!response.ok) throw new Error('save failed');

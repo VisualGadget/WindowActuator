@@ -1,12 +1,11 @@
 {% args pos %}
-{% set import gc; gc.collect() %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Window control</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
 <div class="container">
@@ -46,12 +45,14 @@ function sendPos(v) {
     t.style.display = 'block';
     fetch('set_position', {
         method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        },
         body: 'position=' + encodeURIComponent(v)
     }).then(function() {
         setTimeout(function() { t.style.display = 'none'; }, 1000);
     }).catch(function() {
-        document.getElementById('pform').submit();
+        t.textContent = 'Unable to set position.';
     });
 }
 function setPreset(v) {

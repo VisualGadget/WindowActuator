@@ -13,6 +13,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "mypy",
+    "pytest",
     "ruff",
 ]
 
@@ -20,6 +21,7 @@ dev = [
 line-length = 120
 target-version = "py312"
 exclude = ["ext_modules"]
+extend-exclude = ["firmware/manifest.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W", "UP", "B"]
