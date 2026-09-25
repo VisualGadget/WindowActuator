@@ -1,0 +1,11 @@
+{
+  "owner": "0x1abin",
+  "slug": "micropython-skills",
+  "displayName": "MicroPython Skills",
+  "latest": {
+    "version": "1.0.0",
+    "publishedAt": 1774433633884,
+    "commit": "https://github.com/openclaw/skills/commit/f24b83bb379b163eefc1bc408dcadce9fcf64b47"
+  },
+  "history": []
+}

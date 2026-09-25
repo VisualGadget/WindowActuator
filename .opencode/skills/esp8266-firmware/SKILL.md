@@ -23,6 +23,22 @@ source venv/bin/activate
 - `src_alive/html/` contains only live static assets: `index.html`, `style.css`, and `wa.ico`.
 - Static assets use a one-year cache lifetime. Use a hard refresh or clear browser site data after changing them.
 
+## MicroPython Source Style
+
+- Do not use runtime docstrings in code that runs on the ESP8266 or is frozen into its firmware.
+- Standard Python docstrings become runtime string objects and consume scarce device memory.
+- Format all documentation as comments instead, using reStructuredText-style fields where useful:
+
+  ```python
+  # Apply position calibration limits.
+  #
+  # :param pos_min: Normalized closed-position limit.
+  # :param pos_max: Normalized open-position limit.
+  ```
+
+- This target-firmware rule takes precedence over general Python guidance that requires method docstrings.
+- Ordinary docstrings are acceptable in host-side build and deployment tooling when they do not enter the firmware.
+
 ## Prerequisites
 
 1. Connect the Wemos D1 mini by USB.
