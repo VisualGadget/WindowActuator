@@ -170,7 +170,7 @@ class Servo:
     RAW_PRECISION = 200
     # Within SLOWDOWN_DISTANCE of the target, power falls linearly to SLOWDOWN_MIN_SPEED of the power limit, so the
     # window does not stop abruptly from full speed.
-    SLOWDOWN_DISTANCE = 0.2
+    SLOWDOWN_DISTANCE = 0.4
     SLOWDOWN_MIN_SPEED = 0.5
     RAW_STALL_DELTA = 64
 
