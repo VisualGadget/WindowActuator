@@ -35,18 +35,19 @@ class FakeAdc:
         return self.value
 
 
-machine = types.ModuleType('machine')
+machine = types.ModuleType("machine")
 machine.ADC = lambda _: FakeAdc()
 machine.PWM = FakePwm
 machine.Pin = FakePin
-sys.modules['machine'] = machine
+sys.modules["machine"] = machine
 
-module_path = Path(__file__).parents[1] / 'freeze' / 'wa' / 'servo.py'
-spec = importlib.util.spec_from_file_location('test_servo_module', module_path)
+module_path = Path(__file__).parents[1] / "freeze" / "wa" / "servo.py"
+spec = importlib.util.spec_from_file_location("test_servo_module", module_path)
 assert spec is not None
 servo_module = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
 spec.loader.exec_module(servo_module)
+servo_module.time = types.SimpleNamespace(ticks_ms=lambda: 0)
 
 
 def build_servo():
@@ -80,7 +81,7 @@ def test_servo_stops_after_movement_timeout():
     servo.tick(now=0)
     servo.tick(now=servo.MAX_MOVEMENT_S + 1)
     assert servo.stalled is True
-    assert servo.fault == 'movement_timeout'
+    assert servo.fault == "movement_timeout"
     assert motor.running is False
 
 
@@ -99,7 +100,7 @@ def test_servo_stops_after_stall_grace_period():
     servo.tick(now=0)
     servo.tick(now=servo.STALL_TIMEOUT_S + 0.1)
     assert servo.stalled is True
-    assert servo.fault == 'no_position_progress'
+    assert servo.fault == "no_position_progress"
     assert motor.running is False
 
 
@@ -128,4 +129,3 @@ def test_move_to_raw_clears_mapped_target():
     servo.move_to_raw(40000)
     assert servo.target_position is None
     assert servo._raw_target == 40000
-

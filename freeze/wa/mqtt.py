@@ -3,15 +3,15 @@ import json
 import time
 
 from wa.async_mqtt import AsyncMQTTClient
-from wa.servo import UINT16_MAX, Servo
+from wa.servo import UINT16_MAX, Servo, movement_log
 from wa.utils import wifi_mac
 
 
 class MQTTWindowActuator:
     # Home Assistant MQTT integration and network-side actuator commands.
 
-    _WINDOW_DEV = 'window'
-    _STALE_DETECTOR_DEV = 'stale_detector'
+    _WINDOW_DEV = "window"
+    _STALE_DETECTOR_DEV = "stale_detector"
     _STATE_UPDATE_INTERVAL_S = 20 * 60
     _MQTT_KEEPALIVE_S = 60
     _MQTT_PING_INTERVAL_S = _MQTT_KEEPALIVE_S // 2
@@ -40,21 +40,12 @@ class MQTTWindowActuator:
         self._published_fault: str | None = None
 
         mac = wifi_mac()
-        self._device_id = 'wa_' + mac[-4:]
-        device = {
-            'model': 'WA1',
-            'manufacturer': 'dIcEmAN',
-            'name': client_name,
-            'identifiers': mac
-        }
-        self._availability_topic = f'Household/window/{self._device_id}/availability'
+        self._device_id = "wa_" + mac[-4:]
+        device = {"model": "WA1", "manufacturer": "dIcEmAN", "name": client_name, "identifiers": mac}
+        self._availability_topic = f"Household/window/{self._device_id}/availability"
         self._devices: dict[str, dict] = {
-            self._WINDOW_DEV: {
-                'device_class': 'window'
-            },
-            self._STALE_DETECTOR_DEV: {
-                'device_class': 'problem'
-            }
+            self._WINDOW_DEV: {"device_class": "window"},
+            self._STALE_DETECTOR_DEV: {"device_class": "problem"},
         }
         self._mqtt = AsyncMQTTClient(
             client_id=self._device_id,
@@ -62,46 +53,48 @@ class MQTTWindowActuator:
             port=port,
             user=user,
             password=password,
-            keepalive=self._MQTT_KEEPALIVE_S
+            keepalive=self._MQTT_KEEPALIVE_S,
         )
         self._mqtt.set_callback(self._inbox)
 
         self._discovery_topics: dict[str, str] = {}
         for dev_name, sensor_info in self._devices.items():
-            uid = f'{self._device_id}_{dev_name}'
-            topic_base = f'Household/window/{uid}'
+            uid = f"{self._device_id}_{dev_name}"
+            topic_base = f"Household/window/{uid}"
 
-            sensor_info['name'] = dev_name
-            sensor_info['unique_id'] = uid
-            sensor_info['device'] = device
-            sensor_info['availability_topic'] = self._availability_topic
-            sensor_info['payload_available'] = 'online'
-            sensor_info['payload_not_available'] = 'offline'
+            sensor_info["name"] = dev_name
+            sensor_info["unique_id"] = uid
+            sensor_info["device"] = device
+            sensor_info["availability_topic"] = self._availability_topic
+            sensor_info["payload_available"] = "online"
+            sensor_info["payload_not_available"] = "offline"
 
             if dev_name == self._WINDOW_DEV:
-                platform = 'cover'
-                sensor_info['command_topic'] = topic_base + '/state/set'
-                sensor_info['set_position_topic'] = topic_base + '/position/set'
-                sensor_info['position_topic'] = topic_base + '/position/notify'
-                sensor_info['json_attributes_topic'] = topic_base + '/attributes/notify'
-                sensor_info['state_topic'] = topic_base + '/state/notify'
+                platform = "cover"
+                sensor_info["command_topic"] = topic_base + "/state/set"
+                sensor_info["set_position_topic"] = topic_base + "/position/set"
+                sensor_info["position_topic"] = topic_base + "/position/notify"
+                sensor_info["json_attributes_topic"] = topic_base + "/attributes/notify"
+                sensor_info["state_topic"] = topic_base + "/state/notify"
             else:
-                platform = 'binary_sensor'
-                sensor_info['state_topic'] = topic_base + '/stale/notify'
+                platform = "binary_sensor"
+                sensor_info["state_topic"] = topic_base + "/stale/notify"
 
-            self._discovery_topics[dev_name] = f'homeassistant/{platform}/{uid}/config'
+            self._discovery_topics[dev_name] = f"homeassistant/{platform}/{uid}/config"
 
     def request_position(self, position: float) -> None:
         # Queue a normalized position command for the actuator task.
         if not 0 <= position <= 1:
-            raise ValueError('Position must be between zero and one')
+            raise ValueError("Position must be between zero and one")
 
         self._pending_position = position
+        movement_log("queue_target", "target=%s active=%s" % (position, self._servo.target_position))
         self._pending_stop = False
         self._state_dirty = True
 
     def request_stop(self) -> None:
         # Queue an emergency stop for the actuator task.
+        movement_log("queue_stop", "requested=true")
         self._pending_position = None
         self._pending_stop = True
         self._state_dirty = True
@@ -142,31 +135,29 @@ class MQTTWindowActuator:
     async def _publish_discovery(self) -> None:
         # Publish retained Home Assistant discovery data and restore subscriptions.
         for dev_name, sensor_info in self._devices.items():
-            await self._mqtt.publish(
-                self._discovery_topics[dev_name], json.dumps(sensor_info), retain=True
-            )
+            await self._mqtt.publish(self._discovery_topics[dev_name], json.dumps(sensor_info), retain=True)
 
-            for set_topic in ('command_topic', 'set_position_topic'):
+            for set_topic in ("command_topic", "set_position_topic"):
                 if set_topic in sensor_info:
                     await self._mqtt.subscribe(sensor_info[set_topic])
 
     def _mark_disconnected(self, error: Exception | None = None) -> None:
         # Close a failed MQTT connection.
         if error:
-            print(f'MQTT connection lost: {error}')
+            print(f"MQTT connection lost: {error}")
 
         self._mqtt.close()
 
     async def _connect(self) -> bool:
         # Connect to the broker and publish availability.
         try:
-            self._mqtt.set_last_will(self._availability_topic, 'offline', retain=True)
+            self._mqtt.set_last_will(self._availability_topic, "offline", retain=True)
             await self._mqtt.connect()
             await self._publish_discovery()
-            await self._mqtt.publish(self._availability_topic, 'online', retain=True)
+            await self._mqtt.publish(self._availability_topic, "online", retain=True)
             self._last_ping = time.time()
             await self._publish_state(force=True)
-            print('Connected to MQTT broker')
+            print("Connected to MQTT broker")
             return True
         except Exception as ex:
             self._mark_disconnected(ex)
@@ -180,32 +171,32 @@ class MQTTWindowActuator:
         if not self._mqtt.connected:
             return
 
-        state = ('OFF', 'ON')[self._servo.stalled]
-        stale_topic = self._devices[self._STALE_DETECTOR_DEV]['state_topic']
-        position_topic = self._devices[self._WINDOW_DEV]['position_topic']
-        attributes_topic = self._devices[self._WINDOW_DEV]['json_attributes_topic']
+        state = ("OFF", "ON")[self._servo.stalled]
+        stale_topic = self._devices[self._STALE_DETECTOR_DEV]["state_topic"]
+        position_topic = self._devices[self._WINDOW_DEV]["position_topic"]
+        attributes_topic = self._devices[self._WINDOW_DEV]["json_attributes_topic"]
         attributes = {
-            'position': round(self._servo.position * 100, 1),
-            'moving': self._servo.running,
-            'fault': self._servo.fault
+            "position": round(self._servo.position * 100, 1),
+            "moving": self._servo.running,
+            "fault": self._servo.fault,
         }
 
-        state_topic = self._devices[self._WINDOW_DEV]['state_topic']
+        state_topic = self._devices[self._WINDOW_DEV]["state_topic"]
         if self._servo.fault:
-            cover_state = 'stopped'
+            cover_state = "stopped"
         elif self._servo.running:
-            cover_state = 'opening' if self._servo.opening else 'closing'
+            cover_state = "opening" if self._servo.opening else "closing"
         elif self._servo.position <= self._servo.POSITION_PRECISION:
-            cover_state = 'closed'
+            cover_state = "closed"
         elif self._servo.position >= 1 - self._servo.POSITION_PRECISION:
-            cover_state = 'open'
+            cover_state = "open"
         else:
-            cover_state = 'stopped'
+            cover_state = "stopped"
 
         try:
             await self._mqtt.publish(stale_topic, state, retain=True)
             await self._mqtt.publish(state_topic, cover_state, retain=True)
-            await self._mqtt.publish(position_topic, str(attributes['position']), retain=True)
+            await self._mqtt.publish(position_topic, str(attributes["position"]), retain=True)
             await self._mqtt.publish(attributes_topic, json.dumps(attributes), retain=True)
         except Exception as ex:
             self._mark_disconnected(ex)
@@ -213,7 +204,7 @@ class MQTTWindowActuator:
 
         self._last_update = now
         self._published_fault = self._servo.fault
-        self._last_published_position = attributes['position']
+        self._last_published_position = attributes["position"]
         self._state_dirty = False
 
     def _apply_pending_command(self) -> None:
@@ -232,7 +223,7 @@ class MQTTWindowActuator:
         # Stop the motor without touching the network.
         self._pending_position = None
         self._pending_stop = False
-        self._servo.stop(fault='system_shutdown')
+        self._servo.stop(fault="system_shutdown")
 
     async def run(self) -> None:
         # Run the independent actuator control loop.
@@ -282,18 +273,19 @@ class MQTTWindowActuator:
     def _inbox(self, topic: bytes, msg: bytes) -> None:
         # Queue and validate MQTT actuator commands without blocking the callback.
         top = topic.decode()
+        movement_log("mqtt_rx", "topic=%s payload=%r" % (top, msg))
 
-        if top == self._devices[self._WINDOW_DEV]['command_topic']:
-            if msg == b'OPEN':
+        if top == self._devices[self._WINDOW_DEV]["command_topic"]:
+            if msg == b"OPEN":
                 self.request_position(1)
-            elif msg == b'CLOSE':
+            elif msg == b"CLOSE":
                 self.request_position(0)
-            elif msg == b'STOP':
+            elif msg == b"STOP":
                 self.request_stop()
 
-        if top == self._devices[self._WINDOW_DEV]['set_position_topic']:
+        if top == self._devices[self._WINDOW_DEV]["set_position_topic"]:
             try:
                 new_position = float(msg) / 100
                 self.request_position(new_position)
             except (TypeError, ValueError):
-                print('Ignoring invalid MQTT position command')
+                print("Ignoring invalid MQTT position command")

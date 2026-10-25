@@ -1,6 +1,13 @@
+import time
+
 from machine import ADC, PWM, Pin
 
 UINT16_MAX = 65535
+
+
+def movement_log(event: str, details: str) -> None:
+    # Emit compact serial diagnostics without taking additional ADC samples.
+    print("MOVE t_ms=%s event=%s %s" % (time.ticks_ms(), event, details))
 
 
 class Motor:
@@ -18,6 +25,7 @@ class Motor:
         self._ccw_pin = ccw_pin
         self._led = status_led
         self.running = False
+        self._direction = "stop"
         self.stop()
         self.set_power(power=power)
 
@@ -26,14 +34,18 @@ class Motor:
         #
         # :param power: Rotation power in the range 0..1.
         if not 0 <= power <= 1:
-            raise ValueError('Motor power must be in the range from zero to one')
+            raise ValueError("Motor power must be in the range from zero to one")
 
         self._power_limit = power
+        movement_log("power", "limit=%s running=%s" % (power, self.running))
         if self.running:
             self._power.duty_u16(round(power * UINT16_MAX))
 
     def cw(self) -> None:
         # Rotate clockwise.
+        if self._direction != "cw":
+            movement_log("drive", "previous=%s direction=cw power=%s" % (self._direction, self._power_limit))
+        self._direction = "cw"
         self._ccw_pin.off()
         self._cw_pin.on()
         self._power.duty_u16(round(self._power_limit * UINT16_MAX))
@@ -42,6 +54,9 @@ class Motor:
 
     def ccw(self) -> None:
         # Rotate counterclockwise.
+        if self._direction != "ccw":
+            movement_log("drive", "previous=%s direction=ccw power=%s" % (self._direction, self._power_limit))
+        self._direction = "ccw"
         self._cw_pin.off()
         self._ccw_pin.on()
         self._power.duty_u16(round(self._power_limit * UINT16_MAX))
@@ -55,6 +70,8 @@ class Motor:
         self._ccw_pin.off()
         self._led.off()
         self.running = False
+        movement_log("drive", "previous=%s direction=stop" % self._direction)
+        self._direction = "stop"
 
 
 class PositionSensor:
@@ -79,10 +96,11 @@ class PositionSensor:
         # :param pos_min: Relative ADC value of the closed endpoint.
         # :param pos_max: Relative ADC value of the opened endpoint.
         if not 0 <= pos_min < pos_max <= 1:
-            raise ValueError('Position limits must satisfy 0 <= closed < opened <= 1')
+            raise ValueError("Position limits must satisfy 0 <= closed < opened <= 1")
 
         self._adc_min = round(pos_min * UINT16_MAX)
         self._adc_max = round(pos_max * UINT16_MAX)
+        movement_log("limits", "adc_min=%s adc_max=%s" % (self._adc_min, self._adc_max))
 
     def _clamp(self, raw: int) -> float:
         # Convert a raw ADC value to a clamped normalized position.
@@ -154,16 +172,13 @@ class Servo:
 
     def _stalled_for(self, now: float) -> bool:
         # Return whether movement has made no progress for the stall timeout.
-        return (
-            self._no_progress_started_at is not None
-            and now - self._no_progress_started_at >= self.STALL_TIMEOUT_S
-        )
+        return self._no_progress_started_at is not None and now - self._no_progress_started_at >= self.STALL_TIMEOUT_S
 
     @staticmethod
     def _validate_position(position: float) -> None:
         # Validate a normalized target position.
         if not 0 <= position <= 1:
-            raise ValueError('Servo position must be in the range from zero to one')
+            raise ValueError("Servo position must be in the range from zero to one")
 
     @property
     def position(self) -> float:
@@ -176,6 +191,11 @@ class Servo:
         #
         # :param new_pos: Target position in the range 0..1.
         self._validate_position(new_pos)
+        movement_log(
+            "target",
+            "mode=normalized previous=%s raw_target=%s target=%s running=%s"
+            % (self._target_pos, self._raw_target, new_pos, self.running),
+        )
         self._target_pos = new_pos
         self._movement_started_at = None
         self._clear_fault()
@@ -207,6 +227,11 @@ class Servo:
 
     def stop(self, fault: str | None = None) -> None:
         # Stop movement and optionally record a fault.
+        movement_log(
+            "stop",
+            "fault=%s target=%s raw_target=%s measured=%s running=%s"
+            % (fault, self._target_pos, self._raw_target, self._last_measured_position, self.running),
+        )
         self._target_pos = None
         self._raw_target = None
         self._movement_started_at = None
@@ -233,6 +258,7 @@ class Servo:
         # :param raw: Raw ADC target in the range 0..65535.
         self._target_pos = None
         self._raw_target = max(0, min(UINT16_MAX, raw))
+        movement_log("target", "mode=raw requested=%s target=%s running=%s" % (raw, self._raw_target, self.running))
         self._movement_started_at = None
         self._clear_fault()
 
@@ -283,7 +309,7 @@ class Servo:
             self._movement_started_at = now
 
         if now - self._movement_started_at > self.MAX_MOVEMENT_S:
-            self.stop(fault='movement_timeout')
+            self.stop(fault="movement_timeout")
             return
 
         if self.running:
@@ -294,15 +320,34 @@ class Servo:
                 self._last_position = current_position
                 self._no_progress_started_at = now
             elif self._stalled_for(now):
-                self.stop(fault='no_position_progress')
+                self.stop(fault="no_position_progress")
                 return
         else:
             self._no_progress_started_at = None
 
         position_error = current_position - self._target_pos
         tolerance = self.POSITION_PRECISION / 3 if self.running else self.POSITION_PRECISION
+        movement_log(
+            "tick",
+            "mode=normalized now=%s pos=%s target=%s error=%s tolerance=%s running=%s "
+            "elapsed=%s no_progress_since=%s samples=%s index=%s adc_window=%s"
+            % (
+                now,
+                current_position,
+                self._target_pos,
+                position_error,
+                tolerance,
+                self.running,
+                now - self._movement_started_at,
+                self._no_progress_started_at,
+                self._pos._sample_count,
+                self._pos._sample_index,
+                self._pos._samples,
+            ),
+        )
 
         if abs(position_error) < tolerance:
+            movement_log("reached", "mode=normalized error=%s tolerance=%s" % (position_error, tolerance))
             self.stop()
         elif position_error > 0:
             if not self.running:
@@ -327,7 +372,7 @@ class Servo:
             self._movement_started_at = now
 
         if now - self._movement_started_at > self.MAX_MOVEMENT_S:
-            self.stop(fault='movement_timeout')
+            self.stop(fault="movement_timeout")
             return
 
         if self.running:
@@ -338,14 +383,30 @@ class Servo:
                 self._last_position = float(raw)
                 self._no_progress_started_at = now
             elif self._stalled_for(now):
-                self.stop(fault='no_position_progress')
+                self.stop(fault="no_position_progress")
                 return
         else:
             self._no_progress_started_at = None
 
         error = raw - raw_target
+        movement_log(
+            "tick",
+            "mode=raw now=%s adc=%s target=%s error=%s tolerance=%s running=%s "
+            "elapsed=%s no_progress_since=%s"
+            % (
+                now,
+                raw,
+                raw_target,
+                error,
+                self.RAW_PRECISION,
+                self.running,
+                now - self._movement_started_at,
+                self._no_progress_started_at,
+            ),
+        )
 
         if abs(error) < self.RAW_PRECISION:
+            movement_log("reached", "mode=raw error=%s tolerance=%s" % (error, self.RAW_PRECISION))
             self.stop()
         elif error > 0:
             if not self.running:

@@ -64,21 +64,22 @@ class FakeServo:
         self.running = False
 
 
-async_mqtt_module = types.ModuleType('wa.async_mqtt')
+async_mqtt_module = types.ModuleType("wa.async_mqtt")
 async_mqtt_module.AsyncMQTTClient = FakeAsyncMqtt
-sys.modules['wa.async_mqtt'] = async_mqtt_module
+sys.modules["wa.async_mqtt"] = async_mqtt_module
 
-servo_module = types.ModuleType('wa.servo')
+servo_module = types.ModuleType("wa.servo")
 servo_module.Servo = FakeServo
 servo_module.UINT16_MAX = 65535
-sys.modules['wa.servo'] = servo_module
+servo_module.movement_log = lambda event, details: None
+sys.modules["wa.servo"] = servo_module
 
-utils_module = types.ModuleType('wa.utils')
-utils_module.wifi_mac = lambda: '485519c7d945'
-sys.modules['wa.utils'] = utils_module
+utils_module = types.ModuleType("wa.utils")
+utils_module.wifi_mac = lambda: "485519c7d945"
+sys.modules["wa.utils"] = utils_module
 
-module_path = Path(__file__).parents[1] / 'freeze' / 'wa' / 'mqtt.py'
-spec = importlib.util.spec_from_file_location('mqtt_module', module_path)
+module_path = Path(__file__).parents[1] / "freeze" / "wa" / "mqtt.py"
+spec = importlib.util.spec_from_file_location("mqtt_module", module_path)
 assert spec is not None
 mqtt_module = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
@@ -87,8 +88,7 @@ spec.loader.exec_module(mqtt_module)
 
 def build_client():
     return mqtt_module.MQTTWindowActuator(
-        server='192.0.2.1', port=1883, user='iot', password='secret',
-        servo=FakeServo(), client_name='lrWindow'
+        server="192.0.2.1", port=1883, user="iot", password="secret", servo=FakeServo(), client_name="lrWindow"
     )
 
 
@@ -100,15 +100,15 @@ def test_discovery_uses_stable_identity_and_availability():
     client = build_client()
     run_async(client._connect())
     mqtt = FakeAsyncMqtt.instance
-    assert mqtt.kwargs['client_id'] == 'wa_d945'
-    assert mqtt.will == ('Household/window/wa_d945/availability', 'offline', True, 0)
+    assert mqtt.kwargs["client_id"] == "wa_d945"
+    assert mqtt.will == ("Household/window/wa_d945/availability", "offline", True, 0)
     cover_payload = next(
         json.loads(payload)
         for topic, payload, *_ in mqtt.published
-        if topic == 'homeassistant/cover/wa_d945_window/config'
+        if topic == "homeassistant/cover/wa_d945_window/config"
     )
-    assert cover_payload['availability_topic'] == 'Household/window/wa_d945/availability'
-    assert 'expire_after' not in cover_payload
+    assert cover_payload["availability_topic"] == "Household/window/wa_d945/availability"
+    assert "expire_after" not in cover_payload
     assert client.position == 0.42
 
 
@@ -116,19 +116,19 @@ def test_connect_publishes_online_and_subscribes():
     client = build_client()
     run_async(client._connect())
     mqtt = FakeAsyncMqtt.instance
-    assert ('Household/window/wa_d945/availability', 'online', True, 0) in mqtt.published
+    assert ("Household/window/wa_d945/availability", "online", True, 0) in mqtt.published
     assert mqtt.subscriptions
 
 
 def test_invalid_mqtt_position_is_ignored():
     client = build_client()
-    client._inbox(b'Household/window/wa_d945_window/position/set', b'55')
+    client._inbox(b"Household/window/wa_d945_window/position/set", b"55")
     assert client._pending_position == 0.55
-    client._inbox(b'Household/window/wa_d945_window/position/set', b'invalid')
+    client._inbox(b"Household/window/wa_d945_window/position/set", b"invalid")
     assert client._pending_position == 0.55
 
 
 def test_stop_command_queues_emergency_stop():
     client = build_client()
-    client._inbox(b'Household/window/wa_d945_window/state/set', b'STOP')
+    client._inbox(b"Household/window/wa_d945_window/state/set", b"STOP")
     assert client._pending_stop is True
