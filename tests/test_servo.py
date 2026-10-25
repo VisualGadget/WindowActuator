@@ -287,7 +287,9 @@ def test_motor_speed_never_drops_below_minimum():
     servo._pos._adc.value = 34078  # about 0.54: one point left, inside the slowdown zone, outside the running tolerance
     servo.tick(now_ms=200)
     assert motor.running is True
-    assert abs(motor._speed - servo.SLOWDOWN_MIN_SPEED) < 0.06
+    remaining = abs(servo.measured_position - 0.55)
+    expected = servo.SLOWDOWN_MIN_SPEED + (1 - servo.SLOWDOWN_MIN_SPEED) * remaining / servo.SLOWDOWN_DISTANCE
+    assert abs(motor._speed - expected) < 0.01
     assert motor._speed >= servo.SLOWDOWN_MIN_SPEED
 
 
