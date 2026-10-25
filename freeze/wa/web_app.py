@@ -9,6 +9,7 @@ from microdot import Request, Response, abort
 from microdot.utemplate import Template
 from utemplate import compiled
 from wa import state, validation, version
+from wa.servo import set_debug_log
 from wa.settings import config
 from wa.web import HTML_ROOT, web_server
 
@@ -152,7 +153,8 @@ async def _movement(request: Request):
         motor_power=config.motor_power,
         window_opened_pos=config.window_opened_pos,
         window_closed_pos=config.window_closed_pos,
-        raw_position=round(state.servo.raw_position, 1) if state.servo else 0.0
+        raw_position=round(state.servo.raw_position, 1) if state.servo else 0.0,
+        debug_log=config.debug_log
     )
 
 
@@ -177,10 +179,15 @@ async def _set_movement(request: Request):
     new_opened = int(wnd_opened)
     new_closed = int(wnd_closed)
 
+    # An unchecked checkbox is absent from the form.
+    debug_log = request.form.get('debug_log') == 'on'
+
     config.motor_power = int(motor_power)
     config.window_opened_pos = new_opened
     config.window_closed_pos = new_closed
+    config.debug_log = debug_log
     config.save()
+    set_debug_log(debug_log)
 
     if state.mqtt_wa:
         state.mqtt_wa.set_motor_power(power=motor_power / 100)

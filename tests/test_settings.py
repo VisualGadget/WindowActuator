@@ -78,3 +78,21 @@ def test_parameter_validation_rejects_invalid(tmp_path):
         raise AssertionError('expected ValueError')
     except ValueError:
         pass
+
+
+def test_debug_log_defaults_off_and_round_trips(tmp_path):
+    storage = build_storage(tmp_path)
+    assert storage.debug_log is False
+    storage.wifi_ssid = 'test_ssid'
+    storage.mqtt_server = '192.0.2.1'
+    storage.debug_log = True
+    storage.save()
+
+    reloaded = settings.SettingsStorage(str(tmp_path / 'settings.json'))
+    assert reloaded.debug_log is True
+
+
+def test_debug_log_rejects_non_boolean(tmp_path):
+    storage = build_storage(tmp_path)
+    storage._stor['debug_log'] = 'false'
+    assert storage.debug_log is False

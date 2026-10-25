@@ -325,3 +325,21 @@ def test_no_slowdown_when_power_limit_is_below_floor():
     servo, motor = build_servo()
     motor.set_power(0.1)
     assert servo._approach_speed(0.0) == 1.0
+
+
+def test_movement_log_is_silent_when_debug_is_off(capsys):
+    servo_module.set_debug_log(False)
+    servo_module.movement_log("tick", "pos=%s", (0.5,))
+    assert capsys.readouterr().out == ""
+
+
+def test_movement_log_formats_details_when_debug_is_on(capsys):
+    servo_module.set_debug_log(True)
+    try:
+        servo_module.movement_log("tick", "pos=%s target=%s", (0.5, 0.4))
+        servo_module.movement_log("queue_stop", "requested=true")
+    finally:
+        servo_module.set_debug_log(False)
+    out = capsys.readouterr().out.splitlines()
+    assert out[0].endswith("event=tick pos=0.5 target=0.4")
+    assert out[1].endswith("event=queue_stop requested=true")

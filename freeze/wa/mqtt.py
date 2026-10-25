@@ -88,7 +88,7 @@ class MQTTWindowActuator:
             raise ValueError("Position must be between zero and one")
 
         self._pending_position = position
-        movement_log("queue_target", "target=%s active=%s" % (position, self._servo.target_position))
+        movement_log("queue_target", "target=%s active=%s", (position, self._servo.target_position))
         self._pending_stop = False
         self._state_dirty = True
 
@@ -274,7 +274,7 @@ class MQTTWindowActuator:
     def _inbox(self, topic: bytes, msg: bytes) -> None:
         # Queue and validate MQTT actuator commands without blocking the callback.
         top = topic.decode()
-        movement_log("mqtt_rx", "topic=%s payload=%r" % (top, msg))
+        movement_log("mqtt_rx", "topic=%s payload=%r", (top, msg))
 
         if top == self._devices[self._WINDOW_DEV]["command_topic"]:
             if msg == b"OPEN":

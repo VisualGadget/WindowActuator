@@ -6,7 +6,7 @@ import wa.web_app  # noqa: F401  (registers routes on wa.web.web_server)
 from machine import WDT, Pin, Signal, reset
 from wa import net, state
 from wa.mqtt import MQTTWindowActuator
-from wa.servo import Motor, PositionSensor, Servo
+from wa.servo import Motor, PositionSensor, Servo, set_debug_log
 from wa.settings import config
 from wa.web import web_server
 
@@ -48,6 +48,7 @@ def main():
     print(f'\nNetwork config: {{"IP": "{ip}", "subnet": "{subnet}", "gateway": "{gateway}", "DNS": "{dns}"}}')
     status_led.off()
 
+    set_debug_log(config.debug_log)
     motor = Motor(
         cw_pin=Pin(13, Pin.OUT),
         ccw_pin=Pin(15, Pin.OUT),

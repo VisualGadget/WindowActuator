@@ -75,7 +75,7 @@ sys.modules["wa.async_mqtt"] = async_mqtt_module
 servo_module = types.ModuleType("wa.servo")
 servo_module.Servo = FakeServo
 servo_module.UINT16_MAX = 65535
-servo_module.movement_log = lambda event, details: None
+servo_module.movement_log = lambda event, details, args=(): None
 sys.modules["wa.servo"] = servo_module
 
 utils_module = types.ModuleType("wa.utils")

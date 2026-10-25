@@ -73,6 +73,21 @@ class PercentParameter(Parameter):
             raise ValueError('Percentage must be between zero and one hundred')
 
 
+def _to_bool(value) -> bool:
+    # Accept only JSON booleans, so a stray string such as "false" never reads as true.
+    if not isinstance(value, bool):
+        raise TypeError('Boolean expected')
+
+    return value
+
+
+class BoolParameter(Parameter):
+    # On/off setting.
+
+    def __init__(self, name: str, default: bool = False):
+        super().__init__(name=name, value_type=_to_bool, default=default)
+
+
 class PortParameter(Parameter):
     # TCP port setting.
 
@@ -97,6 +112,7 @@ class SettingsStorage:
     motor_power = PercentParameter('motor_power', 100)
     window_opened_pos = PercentParameter('window_opened_pos', 81)
     window_closed_pos = PercentParameter('window_closed_pos', 24)
+    debug_log = BoolParameter('debug_log', False)
 
     def __init__(self, path: str):
         self._path = path

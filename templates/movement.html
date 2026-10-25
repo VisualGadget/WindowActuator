@@ -1,11 +1,11 @@
-{% args motor_power, window_opened_pos, window_closed_pos, raw_position %}
+{% args motor_power, window_opened_pos, window_closed_pos, raw_position, debug_log %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Movement</title>
-<link rel="stylesheet" href="style.css?v=2">
+<link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 <div class="container">
@@ -41,6 +41,13 @@ oninput="updateBadge('ob', this.value)" onchange="applySettings()">
 <div class="section-title">Calibration helper</div>
 <div class="info-note">Current potentiometer reading: <b>{{raw_position}}%</b> of full scale. Drive the window to
 an endpoint and set the matching slider above to this value.</div>
+<div class="section-title">Diagnostics</div>
+<label class="check-row">
+<input type="checkbox" name="debug_log"{% if debug_log %} checked{% endif %} onchange="applySettings()">
+Extended debug logs
+</label>
+<div class="info-note">Prints every movement step to the serial console. Uses extra memory and time; keep it off
+in normal use.</div>
 </form>
 <div id="toast" class="toast">Applying settings...</div>
 </div>

@@ -5,9 +5,20 @@ from machine import ADC, PWM, Pin
 UINT16_MAX = 65535
 
 
-def movement_log(event: str, details: str) -> None:
-    # Emit compact serial diagnostics without taking additional ADC samples.
-    print("MOVE t_ms=%s event=%s %s" % (time.ticks_ms(), event, details))
+_debug_log = False
+
+
+def set_debug_log(enabled: bool) -> None:
+    # Turn the extended MOVE serial diagnostics on or off.
+    global _debug_log
+    _debug_log = bool(enabled)
+
+
+def movement_log(event: str, details: str, args: tuple = ()) -> None:
+    # Emit compact serial diagnostics without taking additional ADC samples. Details are formatted with args only when
+    # extended debug logging is on, so a disabled log costs neither time nor heap in the control loop.
+    if _debug_log:
+        print("MOVE t_ms=%s event=%s %s" % (time.ticks_ms(), event, details % args if args else details))
 
 
 class Motor:
@@ -38,7 +49,7 @@ class Motor:
             raise ValueError("Motor power must be in the range from zero to one")
 
         self._power_limit = power
-        movement_log("power", "limit=%s running=%s" % (power, self.running))
+        movement_log("power", "limit=%s running=%s", (power, self.running))
         if self.running:
             self._apply_duty()
 
@@ -61,7 +72,7 @@ class Motor:
     def cw(self) -> None:
         # Rotate clockwise.
         if self._direction != "cw":
-            movement_log("drive", "previous=%s direction=cw power=%s" % (self._direction, self._power_limit))
+            movement_log("drive", "previous=%s direction=cw power=%s", (self._direction, self._power_limit))
         self._direction = "cw"
         self._ccw_pin.off()
         self._cw_pin.on()
@@ -72,7 +83,7 @@ class Motor:
     def ccw(self) -> None:
         # Rotate counterclockwise.
         if self._direction != "ccw":
-            movement_log("drive", "previous=%s direction=ccw power=%s" % (self._direction, self._power_limit))
+            movement_log("drive", "previous=%s direction=ccw power=%s", (self._direction, self._power_limit))
         self._direction = "ccw"
         self._cw_pin.off()
         self._ccw_pin.on()
@@ -88,7 +99,7 @@ class Motor:
         self._led.off()
         self.running = False
         self._speed = 1.0
-        movement_log("drive", "previous=%s direction=stop" % self._direction)
+        movement_log("drive", "previous=%s direction=stop", (self._direction,))
         self._direction = "stop"
 
 
@@ -126,7 +137,7 @@ class PositionSensor:
 
         self._adc_min = round(pos_min * UINT16_MAX)
         self._adc_max = round(pos_max * UINT16_MAX)
-        movement_log("limits", "adc_min=%s adc_max=%s" % (self._adc_min, self._adc_max))
+        movement_log("limits", "adc_min=%s adc_max=%s", (self._adc_min, self._adc_max))
 
     def _clamp(self, raw: int) -> float:
         # Convert a raw ADC value to a clamped normalized position.
@@ -237,8 +248,8 @@ class Servo:
         self._validate_position(new_pos)
         movement_log(
             "target",
-            "mode=normalized previous=%s raw_target=%s target=%s running=%s"
-            % (self._target_pos, self._raw_target, new_pos, self.running),
+            "mode=normalized previous=%s raw_target=%s target=%s running=%s",
+            (self._target_pos, self._raw_target, new_pos, self.running),
         )
         self._target_pos = new_pos
         self._movement_started_at = None
@@ -275,8 +286,8 @@ class Servo:
         # Stop movement and optionally record a fault.
         movement_log(
             "stop",
-            "fault=%s target=%s raw_target=%s measured=%s running=%s"
-            % (fault, self._target_pos, self._raw_target, self._last_measured_position, self.running),
+            "fault=%s target=%s raw_target=%s measured=%s running=%s",
+            (fault, self._target_pos, self._raw_target, self._last_measured_position, self.running),
         )
         self._target_pos = None
         self._raw_target = None
@@ -305,7 +316,7 @@ class Servo:
         # :param raw: Raw ADC target in the range 0..65535.
         self._target_pos = None
         self._raw_target = max(0, min(UINT16_MAX, raw))
-        movement_log("target", "mode=raw requested=%s target=%s running=%s" % (raw, self._raw_target, self.running))
+        movement_log("target", "mode=raw requested=%s target=%s running=%s", (raw, self._raw_target, self.running))
         self._movement_started_at = None
         self._clear_fault()
 
@@ -379,8 +390,8 @@ class Servo:
         movement_log(
             "tick",
             "mode=normalized now_ms=%s pos=%s target=%s error=%s tolerance=%s speed=%s running=%s "
-            "elapsed_ms=%s no_progress_since_ms=%s samples=%s index=%s adc_window=%s"
-            % (
+            "elapsed_ms=%s no_progress_since_ms=%s samples=%s index=%s adc_window=%s",
+            (
                 now_ms,
                 current_position,
                 self._target_pos,
@@ -402,7 +413,8 @@ class Servo:
         if abs(position_error) < tolerance or crossed:
             movement_log(
                 "reached",
-                "mode=normalized error=%s tolerance=%s crossed=%s" % (position_error, tolerance, crossed),
+                "mode=normalized error=%s tolerance=%s crossed=%s",
+                (position_error, tolerance, crossed),
             )
             self.stop()
         elif position_error > 0:
@@ -462,8 +474,8 @@ class Servo:
         movement_log(
             "tick",
             "mode=raw now_ms=%s adc=%s target=%s error=%s tolerance=%s running=%s "
-            "elapsed_ms=%s no_progress_since_ms=%s"
-            % (
+            "elapsed_ms=%s no_progress_since_ms=%s",
+            (
                 now_ms,
                 raw,
                 raw_target,
@@ -476,7 +488,7 @@ class Servo:
         )
 
         if abs(error) < self.RAW_PRECISION:
-            movement_log("reached", "mode=raw error=%s tolerance=%s" % (error, self.RAW_PRECISION))
+            movement_log("reached", "mode=raw error=%s tolerance=%s", (error, self.RAW_PRECISION))
             self.stop()
         elif error > 0:
             if not self.running:
