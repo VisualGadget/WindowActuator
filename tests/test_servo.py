@@ -259,3 +259,49 @@ def test_new_target_behind_moving_window_reverses_instead_of_stopping():
     assert motor.running is True
     assert motor._direction == "ccw"
     assert servo.target_position == 0.9
+
+
+def drive_from(adc_value, target):
+    servo, motor = build_servo()
+    servo._pos._adc.value = adc_value
+    servo.position = target
+    servo.tick(now_ms=0)
+    return servo, motor
+
+
+def test_motor_runs_at_full_power_far_from_target():
+    servo, motor = drive_from(adc_value=16384, target=1)  # 0.0 -> 1.0
+    assert motor._power.duty == round(0.5 * 65535)  # power limit 0.5, full speed
+
+
+def test_motor_slows_down_linearly_near_target():
+    servo, motor = drive_from(adc_value=32768, target=0.55)  # 0.5 -> 0.55, half the slowdown distance
+    expected_speed = servo.SLOWDOWN_MIN_SPEED + (1 - servo.SLOWDOWN_MIN_SPEED) * 0.5
+    assert abs(motor._speed - expected_speed) < 0.001
+    assert motor._power.duty == round(0.5 * motor._speed * 65535)
+
+
+def test_motor_speed_never_drops_below_minimum():
+    servo, motor = drive_from(adc_value=32768, target=0.55)
+    servo._pos.reset()
+    servo._pos._adc.value = 34078  # about 0.54: one point left, inside the slowdown zone, outside the running tolerance
+    servo.tick(now_ms=200)
+    assert motor.running is True
+    assert abs(motor._speed - servo.SLOWDOWN_MIN_SPEED) < 0.06
+    assert motor._speed >= servo.SLOWDOWN_MIN_SPEED
+
+
+def test_motor_stop_restores_full_speed_for_next_movement():
+    servo, motor = drive_from(adc_value=32768, target=0.55)
+    servo.stop()
+    servo._pos._adc.value = 16384
+    servo.position = 1
+    servo.tick(now_ms=1000)
+    assert motor._power.duty == round(0.5 * 65535)
+
+
+def test_power_limit_change_keeps_slowdown_speed():
+    servo, motor = drive_from(adc_value=32768, target=0.55)
+    speed = motor._speed
+    motor.set_power(1.0)
+    assert abs(motor._power.duty - speed * 65535) <= 1

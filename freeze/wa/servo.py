@@ -21,6 +21,7 @@ class Motor:
         # :param power: Rotation power in the range 0..1.
         self._power = PWM(pwm_pin, freq=1000, duty_u16=0)
         self._power_limit = 0.0
+        self._speed = 1.0
         self._cw_pin = cw_pin
         self._ccw_pin = ccw_pin
         self._led = status_led
@@ -39,7 +40,18 @@ class Motor:
         self._power_limit = power
         movement_log("power", "limit=%s running=%s" % (power, self.running))
         if self.running:
-            self._power.duty_u16(round(power * UINT16_MAX))
+            self._apply_duty()
+
+    def set_speed(self, speed: float) -> None:
+        # Scale the power limit, e.g. to slow down before stopping. Takes effect immediately while running.
+        #
+        # :param speed: Fraction of the power limit in the range 0..1.
+        self._speed = max(0.0, min(1.0, speed))
+        if self.running:
+            self._apply_duty()
+
+    def _apply_duty(self) -> None:
+        self._power.duty_u16(round(self._power_limit * self._speed * UINT16_MAX))
 
     def cw(self) -> None:
         # Rotate clockwise.
@@ -48,7 +60,7 @@ class Motor:
         self._direction = "cw"
         self._ccw_pin.off()
         self._cw_pin.on()
-        self._power.duty_u16(round(self._power_limit * UINT16_MAX))
+        self._apply_duty()
         self._led.on()
         self.running = True
 
@@ -59,7 +71,7 @@ class Motor:
         self._direction = "ccw"
         self._cw_pin.off()
         self._ccw_pin.on()
-        self._power.duty_u16(round(self._power_limit * UINT16_MAX))
+        self._apply_duty()
         self._led.on()
         self.running = True
 
@@ -70,6 +82,7 @@ class Motor:
         self._ccw_pin.off()
         self._led.off()
         self.running = False
+        self._speed = 1.0
         movement_log("drive", "previous=%s direction=stop" % self._direction)
         self._direction = "stop"
 
@@ -155,6 +168,10 @@ class Servo:
     STALL_TIMEOUT_MS = 1000
     STALL_PROGRESS = 0.001
     RAW_PRECISION = 200
+    # Within SLOWDOWN_DISTANCE of the target, power falls linearly to SLOWDOWN_MIN_SPEED of the power limit, so the
+    # window does not stop abruptly from full speed.
+    SLOWDOWN_DISTANCE = 0.1
+    SLOWDOWN_MIN_SPEED = 0.5
     RAW_STALL_DELTA = 64
 
     def __init__(self, motor: Motor, pos_sensor: PositionSensor, status_led: Pin):
@@ -352,9 +369,10 @@ class Servo:
 
         position_error = current_position - self._target_pos
         tolerance = self.POSITION_PRECISION / 3 if self.running else self.POSITION_PRECISION
+        speed = self._approach_speed(position_error)
         movement_log(
             "tick",
-            "mode=normalized now_ms=%s pos=%s target=%s error=%s tolerance=%s running=%s "
+            "mode=normalized now_ms=%s pos=%s target=%s error=%s tolerance=%s speed=%s running=%s "
             "elapsed_ms=%s no_progress_since_ms=%s samples=%s index=%s adc_window=%s"
             % (
                 now_ms,
@@ -362,6 +380,7 @@ class Servo:
                 self._target_pos,
                 position_error,
                 tolerance,
+                speed,
                 self.running,
                 elapsed_ms,
                 self._no_progress_started_at,
@@ -385,13 +404,22 @@ class Servo:
                 self._last_position = current_position
                 self._no_progress_started_at = now_ms
             self._approach = "cw"
+            self._motor.set_speed(speed)
             self._motor.cw()
         else:
             if not self.running:
                 self._last_position = current_position
                 self._no_progress_started_at = now_ms
             self._approach = "ccw"
+            self._motor.set_speed(speed)
             self._motor.ccw()
+
+    def _approach_speed(self, position_error: float) -> float:
+        # Fraction of the power limit for the remaining distance: full speed far from the target, slowing down linearly
+        # to SLOWDOWN_MIN_SPEED at the target.
+        distance = min(1.0, abs(position_error) / self.SLOWDOWN_DISTANCE)
+
+        return self.SLOWDOWN_MIN_SPEED + (1 - self.SLOWDOWN_MIN_SPEED) * distance
 
     def _tick_raw(self, now_ms: int) -> None:
         # Drive toward a raw potentiometer target during endpoint calibration.
