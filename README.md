@@ -16,7 +16,8 @@ uv pip install -r pyproject.toml --group dev
 ```
 
 ## Build uPython firmware (optional)
-microdot, utemplate, and rendered web templates must be freezed into uPython firmware due to insufficient RAM amount.
+The web server (`wa.httpd`) and the web templates, rendered to Python by utemplate at build time, must be frozen into
+the uPython firmware due to the small amount of RAM.
 
 Read and run **build.sh** to compile **firmware.bin**.
 

@@ -5,43 +5,20 @@ import time
 
 import network
 from machine import reset, reset_cause
-from microdot import Request, Response, abort
-from microdot.utemplate import Template
-from utemplate import compiled
 from wa import state, validation, version
+from wa.httpd import JSON_TYPE, Request, Response, abort
 from wa.servo import set_debug_log
 from wa.settings import config
-from wa.web import HTML_ROOT, web_server
+from wa.web import web_server
+
+from templates import movement_html, network_html, window_html
 
 PASSWORD_MASK = '*' * 8
-WEB_MAX_CONTENT_LENGTH = 2048
-WEB_MAX_BODY_LENGTH = 2048
 
 
-class TemplateLoader(compiled.Loader):
-    # Load templates frozen into firmware.
-
-    def __init__(self, package, template_dir):
-        super().__init__('templates', '.')
-
-
-Request.max_content_length = WEB_MAX_CONTENT_LENGTH
-Request.max_body_length = WEB_MAX_BODY_LENGTH
-Template.initialize(template_dir=HTML_ROOT, loader_class=TemplateLoader)
-
-
-@web_server.before_request
-def _collect_before_request(request: Request):
-    # Reclaim memory before rendering a request.
-    gc.collect()
-
-
-def dynamic_template(template_name: str, **context):
-    # Render a dynamic template without allowing browser caching.
-    return Response(
-        Template(template_name).generate(**context),
-        headers={'Cache-Control': 'no-store, max-age=0'}
-    )
+def dynamic_template(chunks) -> Response:
+    # Stream a rendered template without allowing browser caching.
+    return Response(chunks, cache_control='no-store, max-age=0')
 
 
 def html_escape(value: str) -> str:
@@ -74,7 +51,7 @@ async def _restart_later() -> None:
 @web_server.route('/window.html')
 async def _window(request: Request):
     if state.mqtt_wa:
-        return dynamic_template('window.html', pos=round(state.mqtt_wa.position * 100))
+        return dynamic_template(window_html.render(pos=round(state.mqtt_wa.position * 100)))
 
     return 'Not connected to MQTT server'
 
@@ -95,8 +72,7 @@ async def _set_position(request: Request):
 
 @web_server.route('/network.html')
 async def _settings(request: Request):
-    return dynamic_template(
-        'network.html',
+    return dynamic_template(network_html.render(
         device_name=html_escape(config.device_name),
         wifi_ssid=html_escape(config.wifi_ssid),
         wifi_password=PASSWORD_MASK if config.wifi_password else '',
@@ -104,7 +80,7 @@ async def _settings(request: Request):
         mqtt_port=config.mqtt_port,
         mqtt_user=html_escape(config.mqtt_user),
         mqtt_password=PASSWORD_MASK if config.mqtt_password else ''
-    )
+    ))
 
 
 @web_server.route('/set_network', methods=['POST'])
@@ -148,14 +124,13 @@ async def _set_network(request: Request):
 
 @web_server.route('/movement.html')
 async def _movement(request: Request):
-    return dynamic_template(
-        'movement.html',
+    return dynamic_template(movement_html.render(
         motor_power=config.motor_power,
         window_opened_pos=config.window_opened_pos,
         window_closed_pos=config.window_closed_pos,
         raw_position=round(state.servo.raw_position, 1) if state.servo else 0.0,
         debug_log=config.debug_log
-    )
+    ))
 
 
 @web_server.route('/set_movement', methods=['POST'])
@@ -235,4 +210,4 @@ async def _status(request: Request):
         },
     }
 
-    return Response(json.dumps(payload), headers={'Content-Type': 'application/json'})
+    return Response(json.dumps(payload), content_type=JSON_TYPE)

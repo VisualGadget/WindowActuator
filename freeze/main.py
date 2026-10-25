@@ -13,7 +13,7 @@ from wa.web import web_server
 
 async def _start_web_server() -> None:
     # Bind the HTTP server. This coroutine never returns while serving.
-    await web_server.start_server(host='0.0.0.0', port=80, debug=False)
+    await web_server.start(host='0.0.0.0', port=80)
 
 
 def safe_shutdown() -> None:
