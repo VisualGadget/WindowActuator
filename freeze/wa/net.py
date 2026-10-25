@@ -7,31 +7,57 @@ from wa import state
 from wa.settings import config
 from wa.utils import wifi_mac
 
-WIFI_CONNECT_TIMEOUT_S = 30
-WIFI_CONNECT_RETRY_S = 10
+# One connection attempt: association plus DHCP. Calling connect() again restarts both, so an attempt is only replaced
+# once it has failed or run this long; replies from the access point can be lost for tens of seconds after joining.
+WIFI_CONNECT_ATTEMPT_S = 45
+# At boot, keep trying this long before falling back to the recovery AP, unless the password is rejected.
+WIFI_RECOVERY_AP_AFTER_S = 120
 WIFI_MONITOR_INTERVAL_S = 10
 WIFI_LINK_CHECK_TIMEOUT_S = 2
 WIFI_LINK_FAILURES_BEFORE_RECONNECT = 2
 
 
+def _elapsed_ms(since_ms: int) -> int:
+    return time.ticks_diff(time.ticks_ms(), since_ms)  # type: ignore[attr-defined]
+
+
+def _start_attempt(nic) -> int:
+    # Start a connection attempt and return its start time in ticks_ms.
+    nic.connect(config.wifi_ssid, config.wifi_password)
+    return time.ticks_ms()  # type: ignore[attr-defined]
+
+
+def _attempt_over(nic, started_ms: int) -> bool:
+    # True once the attempt has failed or has run out of time.
+    failed = nic.status() in (network.STAT_WRONG_PASSWORD, network.STAT_NO_AP_FOUND, network.STAT_CONNECT_FAIL)
+
+    return failed or _elapsed_ms(started_ms) >= WIFI_CONNECT_ATTEMPT_S * 1000
+
+
 def connect_wifi(nic, status_led):
-    # Connect to Wi-Fi with bounded retries and recovery-AP fallback.
+    # Connect to Wi-Fi, falling back to the recovery AP for a rejected password or after WIFI_RECOVERY_AP_AFTER_S.
     nic.active(True)
     network.hostname('wa_' + wifi_mac()[-4:])
+    # The access point sends 802.11n frames that the ESP8266 often misses (a third lost after all retries, DHCP replies
+    # missing for up to a minute after joining). Legacy 802.11g rates reach it reliably and are plenty for this device.
+    network.phy_mode(network.MODE_11G)
     print('Connecting to WiFi', end='')
-    deadline = time.time() + WIFI_CONNECT_TIMEOUT_S
-    last_attempt = -WIFI_CONNECT_RETRY_S
-    while not nic.isconnected() and time.time() < deadline:
-        now = time.time()
-        if now - last_attempt >= WIFI_CONNECT_RETRY_S:
-            try:
-                nic.connect(config.wifi_ssid, config.wifi_password)
-            except Exception:
-                nic.active(False)
-                return _start_recovery_ap(status_led)
-            last_attempt = now
-        time.sleep(1)
-        print('.', end='')
+    started = time.ticks_ms()  # type: ignore[attr-defined]
+    try:
+        attempt = _start_attempt(nic)
+        while not nic.isconnected():
+            given_up = _elapsed_ms(started) >= WIFI_RECOVERY_AP_AFTER_S * 1000
+            if nic.status() == network.STAT_WRONG_PASSWORD or given_up:
+                break
+
+            if _attempt_over(nic, attempt):
+                nic.disconnect()
+                attempt = _start_attempt(nic)
+            time.sleep(1)
+            print('.', end='')
+
+    except Exception:
+        pass  # the SDK rejected the settings: fall back to the recovery AP below
 
     if not nic.isconnected():
         nic.active(False)
@@ -73,9 +99,11 @@ async def wifi_monitor() -> None:
     sta_if = network.WLAN(network.STA_IF)
     ap_if = network.WLAN(network.AP_IF)
     link_failures = 0
+    attempt_started = None
     while True:
         await asyncio.sleep(WIFI_MONITOR_INTERVAL_S)
         if sta_if.isconnected():
+            attempt_started = None
             if ap_if.active():
                 ap_if.active(False)
                 print('Recovery AP disabled')
@@ -95,8 +123,12 @@ async def wifi_monitor() -> None:
             continue
 
         link_failures = 0
+        if attempt_started is not None and not _attempt_over(sta_if, attempt_started):
+            continue  # still connecting: a new connect() would restart association and DHCP
+
         try:
             sta_if.active(True)
-            sta_if.connect(config.wifi_ssid, config.wifi_password)
+            attempt_started = _start_attempt(sta_if)
         except Exception as ex:
+            attempt_started = None
             print(f'Wi-Fi reconnect failed: {ex}')
