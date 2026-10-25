@@ -274,9 +274,13 @@ def test_motor_runs_at_full_power_far_from_target():
     assert motor._power.duty == round(0.5 * 65535)  # power limit 0.5, full speed
 
 
+def min_speed(servo, limit=0.5):
+    return servo.SLOWDOWN_MIN_POWER / limit
+
+
 def test_motor_slows_down_linearly_near_target():
     servo, motor = drive_from(adc_value=32768, target=0.55)  # 0.5 -> 0.55, inside the slowdown distance
-    expected_speed = servo.SLOWDOWN_MIN_SPEED + (1 - servo.SLOWDOWN_MIN_SPEED) * 0.05 / servo.SLOWDOWN_DISTANCE
+    expected_speed = min_speed(servo) + (1 - min_speed(servo)) * 0.05 / servo.SLOWDOWN_DISTANCE
     assert abs(motor._speed - expected_speed) < 0.001
     assert motor._power.duty == round(0.5 * motor._speed * 65535)
 
@@ -288,9 +292,9 @@ def test_motor_speed_never_drops_below_minimum():
     servo.tick(now_ms=200)
     assert motor.running is True
     remaining = abs(servo.measured_position - 0.55)
-    expected = servo.SLOWDOWN_MIN_SPEED + (1 - servo.SLOWDOWN_MIN_SPEED) * remaining / servo.SLOWDOWN_DISTANCE
+    expected = min_speed(servo) + (1 - min_speed(servo)) * remaining / servo.SLOWDOWN_DISTANCE
     assert abs(motor._speed - expected) < 0.01
-    assert motor._speed >= servo.SLOWDOWN_MIN_SPEED
+    assert motor._power.duty >= round(servo.SLOWDOWN_MIN_POWER * 65535)
 
 
 def test_motor_stop_restores_full_speed_for_next_movement():
@@ -307,3 +311,17 @@ def test_power_limit_change_keeps_slowdown_speed():
     speed = motor._speed
     motor.set_power(1.0)
     assert abs(motor._power.duty - speed * 65535) <= 1
+
+
+def test_slowdown_floor_is_absolute_duty_at_any_power_limit():
+    for limit in (1.0, 0.5, 0.3):
+        servo, motor = build_servo()
+        motor.set_power(limit)
+        speed = servo._approach_speed(0.0)  # at the target
+        assert abs(limit * speed - servo.SLOWDOWN_MIN_POWER) < 1e-9
+
+
+def test_no_slowdown_when_power_limit_is_below_floor():
+    servo, motor = build_servo()
+    motor.set_power(0.1)
+    assert servo._approach_speed(0.0) == 1.0

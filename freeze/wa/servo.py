@@ -50,6 +50,11 @@ class Motor:
         if self.running:
             self._apply_duty()
 
+    @property
+    def power_limit(self) -> float:
+        # Configured rotation power in the range 0..1.
+        return self._power_limit
+
     def _apply_duty(self) -> None:
         self._power.duty_u16(round(self._power_limit * self._speed * UINT16_MAX))
 
@@ -168,10 +173,11 @@ class Servo:
     STALL_TIMEOUT_MS = 1000
     STALL_PROGRESS = 0.001
     RAW_PRECISION = 200
-    # Within SLOWDOWN_DISTANCE of the target, power falls linearly to SLOWDOWN_MIN_SPEED of the power limit, so the
-    # window does not stop abruptly from full speed.
+    # Within SLOWDOWN_DISTANCE of the target, power falls linearly from the power limit to SLOWDOWN_MIN_POWER, so the
+    # window does not stop abruptly from full speed. The floor is absolute duty, not a fraction of the limit: below
+    # about 10% duty the window stalls under load whatever the configured limit is.
     SLOWDOWN_DISTANCE = 0.12
-    SLOWDOWN_MIN_SPEED = 0.12
+    SLOWDOWN_MIN_POWER = 0.15
     RAW_STALL_DELTA = 64
 
     def __init__(self, motor: Motor, pos_sensor: PositionSensor, status_led: Pin):
@@ -416,10 +422,12 @@ class Servo:
 
     def _approach_speed(self, position_error: float) -> float:
         # Fraction of the power limit for the remaining distance: full speed far from the target, slowing down linearly
-        # to SLOWDOWN_MIN_SPEED at the target.
+        # to SLOWDOWN_MIN_POWER duty at the target. A limit at or below the floor gets no slowdown.
+        limit = self._motor.power_limit
+        min_speed = min(1.0, self.SLOWDOWN_MIN_POWER / limit) if limit > 0 else 1.0
         distance = min(1.0, abs(position_error) / self.SLOWDOWN_DISTANCE)
 
-        return self.SLOWDOWN_MIN_SPEED + (1 - self.SLOWDOWN_MIN_SPEED) * distance
+        return min_speed + (1 - min_speed) * distance
 
     def _tick_raw(self, now_ms: int) -> None:
         # Drive toward a raw potentiometer target during endpoint calibration.
