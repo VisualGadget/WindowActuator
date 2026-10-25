@@ -207,3 +207,55 @@ def test_servo_movement_timeout_across_tick_wraparound():
     servo._last_position = None  # keep the stall check from firing first
     servo.tick(now_ms=ticks_add(start, servo.MAX_MOVEMENT_MS + 1))
     assert servo.fault == "movement_timeout"
+
+
+def test_servo_stops_when_target_is_crossed_instead_of_reversing():
+    servo, motor = build_servo()
+    servo._pos._adc.value = 40960  # 0.75, above the target: drive CW toward lower positions
+    servo.position = 0.5
+    servo.tick(now_ms=0)
+    assert motor._direction == "cw"
+    servo._pos.reset()
+    servo._pos._adc.value = 31129  # about 0.45: the target lies between two samples
+    servo.tick(now_ms=200)
+    assert motor.running is False
+    assert servo.stalled is False
+    assert servo.target_position is None
+
+
+def test_servo_stops_when_target_is_crossed_while_opening():
+    servo, motor = build_servo()
+    servo._pos._adc.value = 24576  # 0.25, below the target: drive CCW toward higher positions
+    servo.position = 0.5
+    servo.tick(now_ms=0)
+    assert motor._direction == "ccw"
+    servo._pos.reset()
+    servo._pos._adc.value = 34406  # about 0.55
+    servo.tick(now_ms=200)
+    assert motor.running is False
+    assert servo.fault is None
+
+
+def test_servo_keeps_driving_before_reaching_target():
+    servo, motor = build_servo()
+    servo._pos._adc.value = 40960
+    servo.position = 0.5
+    servo.tick(now_ms=0)
+    servo._pos.reset()
+    servo._pos._adc.value = 36044  # 0.6: still above the target
+    servo.tick(now_ms=200)
+    assert motor.running is True
+    assert motor._direction == "cw"
+
+
+def test_new_target_behind_moving_window_reverses_instead_of_stopping():
+    servo, motor = build_servo()
+    servo._pos._adc.value = 40960  # 0.75
+    servo.position = 0.5
+    servo.tick(now_ms=0)
+    assert motor._direction == "cw"
+    servo.position = 0.9  # new target behind the current motion
+    servo.tick(now_ms=100)
+    assert motor.running is True
+    assert motor._direction == "ccw"
+    assert servo.target_position == 0.9

@@ -171,6 +171,8 @@ class Servo:
         self._last_position: float | None = None
         self._last_measured_position: float | None = None
         self._no_progress_started_at: int | None = None
+        # Direction chosen for the current normalized target ("cw" or "ccw"), None until the first drive decision.
+        self._approach: str | None = None
         self._stalled = False
         self._fault: str | None = None
 
@@ -217,6 +219,7 @@ class Servo:
         )
         self._target_pos = new_pos
         self._movement_started_at = None
+        self._approach = None
         self._pos.reset()
         self._clear_fault()
 
@@ -255,6 +258,7 @@ class Servo:
         self._target_pos = None
         self._raw_target = None
         self._movement_started_at = None
+        self._approach = None
         self._motor.stop()
 
         if fault is None:
@@ -367,18 +371,26 @@ class Servo:
             ),
         )
 
-        if abs(position_error) < tolerance:
-            movement_log("reached", "mode=normalized error=%s tolerance=%s" % (position_error, tolerance))
+        # CW lowers the position, CCW raises it. An error whose sign opposes the direction chosen for this target means
+        # the window has passed the target between two samples; reversing there makes it hunt around the target.
+        crossed = (self._approach == "cw" and position_error < 0) or (self._approach == "ccw" and position_error > 0)
+        if abs(position_error) < tolerance or crossed:
+            movement_log(
+                "reached",
+                "mode=normalized error=%s tolerance=%s crossed=%s" % (position_error, tolerance, crossed),
+            )
             self.stop()
         elif position_error > 0:
             if not self.running:
                 self._last_position = current_position
                 self._no_progress_started_at = now_ms
+            self._approach = "cw"
             self._motor.cw()
         else:
             if not self.running:
                 self._last_position = current_position
                 self._no_progress_started_at = now_ms
+            self._approach = "ccw"
             self._motor.ccw()
 
     def _tick_raw(self, now_ms: int) -> None:
