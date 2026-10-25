@@ -47,7 +47,19 @@ assert spec is not None
 servo_module = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
 spec.loader.exec_module(servo_module)
-servo_module.time = types.SimpleNamespace(ticks_ms=lambda: 0)
+# MicroPython's ESP8266 tick counter wraps at 2**30 ms; ticks_diff returns the signed shortest distance.
+TICKS_PERIOD = 1 << 30
+
+
+def ticks_add(ticks, delta):
+    return (ticks + delta) % TICKS_PERIOD
+
+
+def ticks_diff(end, start):
+    return (end - start + TICKS_PERIOD // 2) % TICKS_PERIOD - TICKS_PERIOD // 2
+
+
+servo_module.time = types.SimpleNamespace(ticks_ms=lambda: 0, ticks_diff=ticks_diff)
 
 
 def build_servo():
@@ -59,7 +71,7 @@ def build_servo():
 def test_motor_stop_clears_pwm_and_direction():
     servo, motor = build_servo()
     servo.position = 1
-    servo.tick(now=1)
+    servo.tick(now_ms=1000)
     motor.stop()
     assert motor.running is False
     assert motor._power.duty == 0
@@ -78,8 +90,8 @@ def test_position_sensor_clamps_outside_calibration():
 def test_servo_stops_after_movement_timeout():
     servo, motor = build_servo()
     servo.position = 1
-    servo.tick(now=0)
-    servo.tick(now=servo.MAX_MOVEMENT_S + 1)
+    servo.tick(now_ms=0)
+    servo.tick(now_ms=servo.MAX_MOVEMENT_MS + 1)
     assert servo.stalled is True
     assert servo.fault == "movement_timeout"
     assert motor.running is False
@@ -88,8 +100,8 @@ def test_servo_stops_after_movement_timeout():
 def test_servo_allows_feedback_to_remain_still_for_stall_grace_period():
     servo, motor = build_servo()
     servo.position = 1
-    servo.tick(now=0)
-    servo.tick(now=servo.STALL_TIMEOUT_S - 0.1)
+    servo.tick(now_ms=0)
+    servo.tick(now_ms=servo.STALL_TIMEOUT_MS - 100)
     assert servo.stalled is False
     assert motor.running is True
 
@@ -97,8 +109,8 @@ def test_servo_allows_feedback_to_remain_still_for_stall_grace_period():
 def test_servo_stops_after_stall_grace_period():
     servo, motor = build_servo()
     servo.position = 1
-    servo.tick(now=0)
-    servo.tick(now=servo.STALL_TIMEOUT_S + 0.1)
+    servo.tick(now_ms=0)
+    servo.tick(now_ms=servo.STALL_TIMEOUT_MS + 100)
     assert servo.stalled is True
     assert servo.fault == "no_position_progress"
     assert motor.running is False
@@ -108,7 +120,7 @@ def test_move_to_raw_drives_toward_target():
     servo, motor = build_servo()
     servo._pos._adc.value = 32768
     servo.move_to_raw(50000)
-    servo.tick(now=0)
+    servo.tick(now_ms=0)
     assert motor.running is True
     assert motor._cw_pin.state is False
     assert motor._ccw_pin.state is True
@@ -118,7 +130,7 @@ def test_move_to_raw_stops_at_target():
     servo, motor = build_servo()
     servo._pos._adc.value = 50000
     servo.move_to_raw(50000)
-    servo.tick(now=0)
+    servo.tick(now_ms=0)
     assert motor.running is False
     assert servo._raw_target is None
 
@@ -129,3 +141,69 @@ def test_move_to_raw_clears_mapped_target():
     servo.move_to_raw(40000)
     assert servo.target_position is None
     assert servo._raw_target == 40000
+
+
+def test_position_sensor_samples_every_interval_in_milliseconds():
+    sensor = servo_module.PositionSensor(pos_min=0.25, pos_max=0.75)
+    for now_ms in range(0, 1000, 100):
+        sensor.read(now_ms)
+    # Samples at 0, 200, 400, 600 and 800 ms; the window holds the latest four.
+    assert sensor._sample_count == sensor.AVERAGE_WINDOW
+    assert sensor._sample_index == 5 % sensor.AVERAGE_WINDOW
+
+
+def test_position_sensor_skips_samples_within_interval():
+    sensor = servo_module.PositionSensor(pos_min=0.25, pos_max=0.75)
+    sensor.read(0)
+    sensor.read(sensor.SAMPLE_INTERVAL_MS - 1)
+    assert sensor._sample_count == 1
+    sensor.read(sensor.SAMPLE_INTERVAL_MS)
+    assert sensor._sample_count == 2
+
+
+def test_position_sensor_averages_only_taken_samples():
+    sensor = servo_module.PositionSensor(pos_min=0.25, pos_max=0.75)
+    sensor._adc.value = 32768
+    # A single sample must not be diluted by the empty slots of the averaging window.
+    assert abs(sensor.read(0) - 0.5) < 0.001
+
+
+def test_position_sensor_samples_across_tick_wraparound():
+    sensor = servo_module.PositionSensor(pos_min=0.25, pos_max=0.75)
+    start = TICKS_PERIOD - 100
+    sensor.read(start)
+    sensor.read(ticks_add(start, sensor.SAMPLE_INTERVAL_MS))
+    assert sensor._sample_count == 2
+
+
+def test_new_target_discards_samples_from_previous_movement():
+    servo, motor = build_servo()
+    servo._pos._adc.value = 16384
+    servo.position = 1
+    for now_ms in range(0, 800, 100):
+        servo.tick(now_ms=now_ms)
+    servo._pos._adc.value = 32768
+    servo.position = 0
+    servo.tick(now_ms=800)
+    assert abs(servo.measured_position - 0.5) < 0.001
+
+
+def test_servo_stall_timeout_across_tick_wraparound():
+    servo, motor = build_servo()
+    start = TICKS_PERIOD - 300
+    servo.position = 1
+    servo.tick(now_ms=start)
+    servo.tick(now_ms=ticks_add(start, servo.STALL_TIMEOUT_MS - 100))
+    assert servo.stalled is False
+    servo.tick(now_ms=ticks_add(start, servo.STALL_TIMEOUT_MS + 100))
+    assert servo.fault == "no_position_progress"
+
+
+def test_servo_movement_timeout_across_tick_wraparound():
+    servo, motor = build_servo()
+    start = TICKS_PERIOD - 300
+    servo.position = 1
+    servo.tick(now_ms=start)
+    servo._last_position = None  # keep the stall check from firing first
+    servo.tick(now_ms=ticks_add(start, servo.MAX_MOVEMENT_MS + 1))
+    assert servo.fault == "movement_timeout"

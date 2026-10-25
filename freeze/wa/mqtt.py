@@ -32,7 +32,7 @@ class MQTTWindowActuator:
         self._watchdog = None
         self._last_ping = 0.0
         self._last_update = 0.0
-        self._last_control_tick = time.time()
+        self._last_control_tick = time.ticks_ms()  # type: ignore[attr-defined]
         self._last_published_position: float | None = None
         self._pending_position: float | None = None
         self._pending_stop = False
@@ -128,8 +128,8 @@ class MQTTWindowActuator:
         return self._mqtt.connected
 
     @property
-    def last_control_tick(self) -> float:
-        # Return the latest control-loop timestamp.
+    def last_control_tick(self) -> int:
+        # Return the latest control-loop timestamp from time.ticks_ms().
         return self._last_control_tick
 
     async def _publish_discovery(self) -> None:
@@ -228,9 +228,10 @@ class MQTTWindowActuator:
     async def run(self) -> None:
         # Run the independent actuator control loop.
         while True:
-            started = time.time()
+            # Millisecond ticks: time.time() counts whole seconds on ESP8266, too coarse for the 200 ms ADC sampling.
+            started = time.ticks_ms()  # type: ignore[attr-defined]
             self._apply_pending_command()
-            self._servo.tick(now=started)
+            self._servo.tick(now_ms=started)
             self._last_control_tick = started
             current_position = round(self._servo.measured_position * 100, 1)
             if (

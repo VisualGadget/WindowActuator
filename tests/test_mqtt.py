@@ -2,6 +2,7 @@ import asyncio
 import importlib.util
 import json
 import sys
+import time
 import types
 from pathlib import Path
 
@@ -63,6 +64,9 @@ class FakeServo:
     def stop(self, **kwargs):
         self.running = False
 
+    def tick(self, now_ms):
+        self.ticks.append(now_ms)
+
 
 async_mqtt_module = types.ModuleType("wa.async_mqtt")
 async_mqtt_module.AsyncMQTTClient = FakeAsyncMqtt
@@ -84,11 +88,15 @@ assert spec is not None
 mqtt_module = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
 spec.loader.exec_module(mqtt_module)
+# CPython lacks MicroPython's tick counter; wall-clock time stays real.
+mqtt_module.time = types.SimpleNamespace(time=time.time, ticks_ms=lambda: 123456)
 
 
 def build_client():
+    servo = FakeServo()
+    servo.ticks = []
     return mqtt_module.MQTTWindowActuator(
-        server="192.0.2.1", port=1883, user="iot", password="secret", servo=FakeServo(), client_name="lrWindow"
+        server="192.0.2.1", port=1883, user="iot", password="secret", servo=servo, client_name="lrWindow"
     )
 
 
@@ -132,3 +140,22 @@ def test_stop_command_queues_emergency_stop():
     client = build_client()
     client._inbox(b"Household/window/wa_d945_window/state/set", b"STOP")
     assert client._pending_stop is True
+
+
+def test_control_loop_ticks_servo_with_millisecond_clock():
+    client = build_client()
+
+    async def stop_after_first_iteration(_):
+        raise asyncio.CancelledError
+
+    original_sleep = mqtt_module.asyncio.sleep
+    mqtt_module.asyncio.sleep = stop_after_first_iteration
+    try:
+        run_async(client.run())
+    except asyncio.CancelledError:
+        pass
+    finally:
+        mqtt_module.asyncio.sleep = original_sleep
+
+    assert client._servo.ticks == [123456]
+    assert client.last_control_tick == 123456

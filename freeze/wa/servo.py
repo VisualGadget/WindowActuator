@@ -77,7 +77,7 @@ class Motor:
 class PositionSensor:
     # Gearbox axis absolute position sensor based on a potentiometer.
 
-    SAMPLE_INTERVAL_S = 0.2
+    SAMPLE_INTERVAL_MS = 200
     AVERAGE_WINDOW = 4
 
     def __init__(self, pos_min: float = 0.0, pos_max: float = 1.0):
@@ -87,8 +87,16 @@ class PositionSensor:
         self._samples = [0] * self.AVERAGE_WINDOW
         self._sample_count = 0
         self._sample_index = 0
-        self._last_sample_at = -self.SAMPLE_INTERVAL_S
+        self._last_sample_at: int | None = None
+        self.reset()
         self.set_limits(pos_min=pos_min, pos_max=pos_max)
+
+    def reset(self) -> None:
+        # Discard averaged samples so a new movement starts from fresh readings. Samples kept from an earlier movement
+        # would be stale, and a tick timestamp older than half the tick period would no longer compare correctly.
+        self._sample_count = 0
+        self._sample_index = 0
+        self._last_sample_at = None
 
     def set_limits(self, pos_min: float, pos_max: float) -> None:
         # Set potentiometer calibration limits.
@@ -108,21 +116,23 @@ class PositionSensor:
 
         return max(0.0, min(1.0, position))
 
-    def read(self, now: float) -> float:
+    def read(self, now_ms: int) -> float:
         # Sample and average the ADC on a slower cadence to reduce noise and Wi-Fi contention.
-        if now - self._last_sample_at >= self.SAMPLE_INTERVAL_S:
+        #
+        # :param now_ms: Control-loop timestamp from time.ticks_ms().
+        if self._last_sample_at is None or time.ticks_diff(now_ms, self._last_sample_at) >= self.SAMPLE_INTERVAL_MS:  # type: ignore[attr-defined]
             self._samples[self._sample_index] = self._adc.read_u16()
             self._sample_index = (self._sample_index + 1) % self.AVERAGE_WINDOW
             if self._sample_count < self.AVERAGE_WINDOW:
                 self._sample_count += 1
-            self._last_sample_at = now
+            self._last_sample_at = now_ms
 
         if self._sample_count == 0:
             return self._clamp(self._adc.read_u16())
 
         total = 0
-        for value in self._samples:
-            total += value
+        for i in range(self._sample_count):
+            total += self._samples[i]
 
         return self._clamp(total // self._sample_count)
 
@@ -141,8 +151,8 @@ class Servo:
     # Servomotor controller with feedback and movement safety limits.
 
     POSITION_PRECISION = 0.015
-    MAX_MOVEMENT_S = 90
-    STALL_TIMEOUT_S = 1.0
+    MAX_MOVEMENT_MS = 90000
+    STALL_TIMEOUT_MS = 1000
     STALL_PROGRESS = 0.001
     RAW_PRECISION = 200
     RAW_STALL_DELTA = 64
@@ -156,10 +166,11 @@ class Servo:
         self._led = status_led
         self._target_pos: float | None = None
         self._raw_target: int | None = None
-        self._movement_started_at: float | None = None
+        # Control timestamps are time.ticks_ms() values; compare them only with time.ticks_diff().
+        self._movement_started_at: int | None = None
         self._last_position: float | None = None
         self._last_measured_position: float | None = None
-        self._no_progress_started_at: float | None = None
+        self._no_progress_started_at: int | None = None
         self._stalled = False
         self._fault: str | None = None
 
@@ -170,9 +181,17 @@ class Servo:
         self._no_progress_started_at = None
         self._led.off()
 
-    def _stalled_for(self, now: float) -> bool:
+    @staticmethod
+    def _elapsed_ms(now_ms: int, since_ms: int) -> int:
+        # Wrap-safe milliseconds between two time.ticks_ms() values.
+        return time.ticks_diff(now_ms, since_ms)  # type: ignore[attr-defined]
+
+    def _stalled_for(self, now_ms: int) -> bool:
         # Return whether movement has made no progress for the stall timeout.
-        return self._no_progress_started_at is not None and now - self._no_progress_started_at >= self.STALL_TIMEOUT_S
+        return (
+            self._no_progress_started_at is not None
+            and self._elapsed_ms(now_ms, self._no_progress_started_at) >= self.STALL_TIMEOUT_MS
+        )
 
     @staticmethod
     def _validate_position(position: float) -> None:
@@ -198,6 +217,7 @@ class Servo:
         )
         self._target_pos = new_pos
         self._movement_started_at = None
+        self._pos.reset()
         self._clear_fault()
 
     @property
@@ -288,38 +308,39 @@ class Servo:
         # Return the current movement fault, if any.
         return self._fault
 
-    def tick(self, now: float = 0) -> None:
+    def tick(self, now_ms: int) -> None:
         # Process one bounded control-loop iteration.
         #
-        # :param now: Monotonic timestamp in seconds.
+        # :param now_ms: Control-loop timestamp from time.ticks_ms().
         if self._stalled:
             self._led.value(not self._led.value())
             return
 
         if self._raw_target is not None:
-            self._tick_raw(now)
+            self._tick_raw(now_ms)
             return
 
         if self._target_pos is None:
             return
 
-        current_position = self._pos.read(now)
+        current_position = self._pos.read(now_ms)
         self._last_measured_position = current_position
         if self._movement_started_at is None:
-            self._movement_started_at = now
+            self._movement_started_at = now_ms
+        elapsed_ms = self._elapsed_ms(now_ms, self._movement_started_at)
 
-        if now - self._movement_started_at > self.MAX_MOVEMENT_S:
+        if elapsed_ms > self.MAX_MOVEMENT_MS:
             self.stop(fault="movement_timeout")
             return
 
         if self.running:
             if self._last_position is None:
                 self._last_position = current_position
-                self._no_progress_started_at = now
+                self._no_progress_started_at = now_ms
             elif abs(current_position - self._last_position) >= self.STALL_PROGRESS:
                 self._last_position = current_position
-                self._no_progress_started_at = now
-            elif self._stalled_for(now):
+                self._no_progress_started_at = now_ms
+            elif self._stalled_for(now_ms):
                 self.stop(fault="no_position_progress")
                 return
         else:
@@ -329,16 +350,16 @@ class Servo:
         tolerance = self.POSITION_PRECISION / 3 if self.running else self.POSITION_PRECISION
         movement_log(
             "tick",
-            "mode=normalized now=%s pos=%s target=%s error=%s tolerance=%s running=%s "
-            "elapsed=%s no_progress_since=%s samples=%s index=%s adc_window=%s"
+            "mode=normalized now_ms=%s pos=%s target=%s error=%s tolerance=%s running=%s "
+            "elapsed_ms=%s no_progress_since_ms=%s samples=%s index=%s adc_window=%s"
             % (
-                now,
+                now_ms,
                 current_position,
                 self._target_pos,
                 position_error,
                 tolerance,
                 self.running,
-                now - self._movement_started_at,
+                elapsed_ms,
                 self._no_progress_started_at,
                 self._pos._sample_count,
                 self._pos._sample_index,
@@ -352,15 +373,15 @@ class Servo:
         elif position_error > 0:
             if not self.running:
                 self._last_position = current_position
-                self._no_progress_started_at = now
+                self._no_progress_started_at = now_ms
             self._motor.cw()
         else:
             if not self.running:
                 self._last_position = current_position
-                self._no_progress_started_at = now
+                self._no_progress_started_at = now_ms
             self._motor.ccw()
 
-    def _tick_raw(self, now: float) -> None:
+    def _tick_raw(self, now_ms: int) -> None:
         # Drive toward a raw potentiometer target during endpoint calibration.
         raw_target = self._raw_target
         if raw_target is None:
@@ -369,20 +390,21 @@ class Servo:
         raw = self._pos.raw
         self._last_measured_position = self._pos.position
         if self._movement_started_at is None:
-            self._movement_started_at = now
+            self._movement_started_at = now_ms
+        elapsed_ms = self._elapsed_ms(now_ms, self._movement_started_at)
 
-        if now - self._movement_started_at > self.MAX_MOVEMENT_S:
+        if elapsed_ms > self.MAX_MOVEMENT_MS:
             self.stop(fault="movement_timeout")
             return
 
         if self.running:
             if self._last_position is None:
                 self._last_position = float(raw)
-                self._no_progress_started_at = now
+                self._no_progress_started_at = now_ms
             elif abs(raw - self._last_position) >= self.RAW_STALL_DELTA:
                 self._last_position = float(raw)
-                self._no_progress_started_at = now
-            elif self._stalled_for(now):
+                self._no_progress_started_at = now_ms
+            elif self._stalled_for(now_ms):
                 self.stop(fault="no_position_progress")
                 return
         else:
@@ -391,16 +413,16 @@ class Servo:
         error = raw - raw_target
         movement_log(
             "tick",
-            "mode=raw now=%s adc=%s target=%s error=%s tolerance=%s running=%s "
-            "elapsed=%s no_progress_since=%s"
+            "mode=raw now_ms=%s adc=%s target=%s error=%s tolerance=%s running=%s "
+            "elapsed_ms=%s no_progress_since_ms=%s"
             % (
-                now,
+                now_ms,
                 raw,
                 raw_target,
                 error,
                 self.RAW_PRECISION,
                 self.running,
-                now - self._movement_started_at,
+                elapsed_ms,
                 self._no_progress_started_at,
             ),
         )
@@ -411,10 +433,10 @@ class Servo:
         elif error > 0:
             if not self.running:
                 self._last_position = float(raw)
-                self._no_progress_started_at = now
+                self._no_progress_started_at = now_ms
             self._motor.cw()
         else:
             if not self.running:
                 self._last_position = float(raw)
-                self._no_progress_started_at = now
+                self._no_progress_started_at = now_ms
             self._motor.ccw()
