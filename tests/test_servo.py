@@ -275,8 +275,8 @@ def test_motor_runs_at_full_power_far_from_target():
 
 
 def test_motor_slows_down_linearly_near_target():
-    servo, motor = drive_from(adc_value=32768, target=0.55)  # 0.5 -> 0.55, half the slowdown distance
-    expected_speed = servo.SLOWDOWN_MIN_SPEED + (1 - servo.SLOWDOWN_MIN_SPEED) * 0.5
+    servo, motor = drive_from(adc_value=32768, target=0.55)  # 0.5 -> 0.55, inside the slowdown distance
+    expected_speed = servo.SLOWDOWN_MIN_SPEED + (1 - servo.SLOWDOWN_MIN_SPEED) * 0.05 / servo.SLOWDOWN_DISTANCE
     assert abs(motor._speed - expected_speed) < 0.001
     assert motor._power.duty == round(0.5 * motor._speed * 65535)
 
